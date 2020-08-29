@@ -8,6 +8,7 @@ from slicer.ScriptedLoadableModule import *
 import logging
 import os
 
+
 #
 # InjectionTrajectoryPlanner
 #
@@ -18,16 +19,21 @@ class InjectionTrajectoryPlanner(ScriptedLoadableModule):
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
+    def __init__(self, parent):
+        ScriptedLoadableModule.__init__(self, parent)
+        self.parent.title = "InjectionTrajectoryPlanner"  # TODO make this more human readable by adding spaces
+        self.parent.categories = ["SpineRobot"]
+        self.parent.dependencies = []
+        self.parent.contributors = [
+            "Henry Phalen (Johns Hopkins University)"]  # replace with "Firstname Lastname (Organization)"
+        self.parent.helpText = """
+This module can be used to plan injection trajectories.
+"""
+        self.parent.helpText += self.getDefaultModuleDocumentationLink()
+        self.parent.acknowledgementText = """
+This file was originally developed by Henry Phalen, a PhD student at Johns Hopkins University.
+"""  # replace with organization, grant and thanks.
 
-def __init__(self, parent):
-    ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "InjectionTrajectoryPlanner"  # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SpineRobot"]
-    self.parent.dependencies = []
-    self.parent.contributors = ["Henry Phalen (Johns Hopkins University)"]
-    self.parent.helpText = """ _ """
-    self.parent.helpText += self.getDefaultModuleDocumentationLink()
-    self.parent.acknowledgementText = """ _ """
 
 #
 # InjectionTrajectoryPlannerWidget
@@ -49,7 +55,7 @@ class SlicerMeshModel:
         self.mesh_model_node.SetAndObserveTransformNodeID(self.transform_nodeID)
 
 
-# noinspection PyUnusedLocal,PyMethodMayBeStatic,PyAttributeOutsideInit
+# noinspection PyAttributeOutsideInit,PyMethodMayBeStatic
 class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
@@ -59,8 +65,10 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         ScriptedLoadableModuleWidget.setup(self)
 
         # Instantiate and connect widgets ...
-        # Parameters Area
 
+        #
+        # Parameters Area
+        #
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
         parametersCollapsibleButton.text = "Parameters"
         self.layout.addWidget(parametersCollapsibleButton)
@@ -68,6 +76,10 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         # Layout within the dummy collapsible button
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
+        #
+        # input volume selector
+        #
+        import os
         self.dir = os.path.dirname(__file__)
         self.needle_filename = self.dir + '/Resources/meshes/50mm_18ga_needle.stl'
         self.test_volume_data_filename = self.dir + '/Resources/volumes/test_spine_segmentation.nrrd'
@@ -104,6 +116,9 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.targetSelector.setCurrentNode(self.targetMarkupNode)
         parametersFormLayout.addRow("Target Marker: ", self.targetSelector)
 
+        #
+        # output volume selector
+        #
         self.beginSelector = slicer.qMRMLNodeComboBox()
         self.beginSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
         self.beginSelector.selectNodeUponCreation = True
@@ -150,13 +165,12 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         parametersFormLayout.addRow(self.toggleSliceVisibilityButton)
 
         self.moveTargetToIntersectionButton = qt.QPushButton("Move Target to Slice Intersection")
-        self.moveTargetToIntersectionButton.toolTip = "Align slice intersections (hover while pressing shift may" \
-                                                      " help). Click button to move target point here"
+        self.moveTargetToIntersectionButton.toolTip = "Align slice intersections (hover while pressing shift may " \
+                                                      "help). Click button to move target point here"
         self.moveTargetToIntersectionButton.enabled = True
         parametersFormLayout.addRow(self.moveTargetToIntersectionButton)
 
         # connections
-        # self.applyButton.connect('clicked(bool)', self.onApplyButton)
         self.addTestDataButton.connect('clicked(bool)', self.onAddTestDataButton)
         self.toggleSliceIntersectionButton.connect('clicked(bool)', self.onToggleSliceIntersectionButton)
         self.toggleSliceVisibilityButton.connect('clicked(bool)', self.onToggleSliceVisibilityButton)
@@ -187,13 +201,16 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     def onMoveTargetToIntersectionButton(self):
         logic = InjectionTrajectoryPlannerLogic()
-        logic.moveTargetToIntersectionButton(self.targetMarkupNode)
+        logic.moveTargetToIntersectionButton()
 
+    # noinspection PyUnusedLocal
     def TargetMarkupModifiedCallback(self, caller, event):
         pos = [0, 0, 0]
         self.targetMarkupNode.GetNthFiducialPosition(0, pos)
         self.rulerNode.SetPosition1(pos)
+        # self.targetTMarkupNode.SetNthFiducialPosition(0,
 
+    # noinspection PyUnusedLocal
     def ReferenceMarkupModifiedCallback(self, caller, event):
         pos = [0, 0, 0]
         self.referenceMarkupNode.GetNthFiducialPosition(0, pos)
@@ -253,13 +270,8 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
             controller = layoutManager.sliceWidget(sliceViewName).sliceController()
             controller.setSliceVisible(int(not controller.sliceLogic().GetSliceNode().GetSliceVisible()))
 
-    def moveTargetToIntersectionButton(self, targetMarkupNode):
+    def moveTargetToIntersectionButton(self):
         layoutManager = slicer.app.layoutManager()
-        self.targetMarkupNode.SetNthFiducialPosition(0, 0, 0, 0)
-
-    def run(self, inputVolume, outputVolume, imageThreshold, enableScreenshots=0):
-        """ Run the actual algorithm """
-        pass
 
 
 # noinspection PyMethodMayBeStatic
@@ -294,4 +306,5 @@ class InjectionTrajectoryPlannerTest(ScriptedLoadableModuleTest):
     """
 
         self.delayDisplay("Starting the test")
+
         self.delayDisplay('Test passed!')
