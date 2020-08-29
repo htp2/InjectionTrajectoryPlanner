@@ -46,6 +46,7 @@ class SlicerMeshModel:
         self.mesh_model_node.SetAndObserveTransformNodeID(self.transform_nodeID)
 
 
+# noinspection PyUnusedLocal,PyMethodMayBeStatic
 class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
@@ -141,7 +142,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         parametersFormLayout.addRow(self.toggleSliceVisibilityButton)
 
         self.moveTargetToIntersectionButton = qt.QPushButton("Move Target to Slice Intersection")
-        self.moveTargetToIntersectionButton.toolTip = "Align slice intersections (hover while pressing shift may help). Click button to move target point here"
+        self.moveTargetToIntersectionButton.toolTip = "Align slice intersections (hover while pressing shift may" \
+                                                      " help). Click button to move target point here"
         self.moveTargetToIntersectionButton.enabled = True
         parametersFormLayout.addRow(self.moveTargetToIntersectionButton)
 
@@ -167,18 +169,15 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         logic = InjectionTrajectoryPlannerLogic()
         logic.addTestData(self.test_volume_data_filename, self.test_ct_directory)
 
-    @staticmethod
-    def onToggleSliceIntersectionButton():
+    def onToggleSliceIntersectionButton(self):
         logic = InjectionTrajectoryPlannerLogic()
         logic.toggleSliceIntersection()
 
-    @staticmethod
-    def onToggleSliceVisibilityButton():
+    def onToggleSliceVisibilityButton(self):
         logic = InjectionTrajectoryPlannerLogic()
         logic.toggleSliceVisibility()
 
-    @staticmethod
-    def onMoveTargetToIntersectionButton():
+    def onMoveTargetToIntersectionButton(self):
         logic = InjectionTrajectoryPlannerLogic()
         logic.moveTargetToIntersectionButton()
 
@@ -194,6 +193,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
 
 # InjectionTrajectoryPlannerLogic
+# noinspection PyMethodMayBeStatic
 class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
   computation done by your module.  The interface
@@ -218,15 +218,11 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         label_volumeNode.AddAndObserveDisplayNodeID(displayNode.GetID())
 
         """ Load image data  """
-        loadedNodeIDs = []  # this list will contain the list of all loaded node IDs
-
         from DICOMLib import DICOMUtils
         with DICOMUtils.TemporaryDICOMDatabase() as db:
             DICOMUtils.importDicom(test_ct_directory, db)
-            patientUIDs = db.patients()
-            for patientUID in patientUIDs:
-                # loadedNodeIDs.extend(DICOMUtils.loadPatientByUID(patientUID))
-                DICOMUtils.loadPatientByUID(patientUID)
+            patientUID = db.patients()[0]
+            DICOMUtils.loadPatientByUID(patientUID)
         # voxel_array = slicer.util.arrayFromVolume(label_volumeNode)
 
         # Resets focal point (pink wireframe bounding box) to center of scene
@@ -249,59 +245,12 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
     def moveTargetToIntersectionButton(self):
         layoutManager = slicer.app.layoutManager()
 
-    def hasImageData(self, volumeNode):
-        """This is an example logic method that
-    returns true if the passed in volume
-    node has valid image data
-    """
-        if not volumeNode:
-            logging.debug('hasImageData failed: no volume node')
-            return False
-        if volumeNode.GetImageData() is None:
-            logging.debug('hasImageData failed: no image data in volume node')
-            return False
-        return True
-
-    def isValidInputOutputData(self, inputVolumeNode, outputVolumeNode):
-        """Validates if the output is not the same as input
-    """
-        if not inputVolumeNode:
-            logging.debug('isValidInputOutputData failed: no input volume node defined')
-            return False
-        if not outputVolumeNode:
-            logging.debug('isValidInputOutputData failed: no output volume node defined')
-            return False
-        if inputVolumeNode.GetID() == outputVolumeNode.GetID():
-            logging.debug(
-                'isValidInputOutputData failed: input and output volume is the same. Create a new volume for output to avoid this error.')
-            return False
-        return True
-
     def run(self, inputVolume, outputVolume, imageThreshold, enableScreenshots=0):
-        """
-    Run the actual algorithm
-    """
-
-        if not self.isValidInputOutputData(inputVolume, outputVolume):
-            slicer.util.errorDisplay('Input volume is the same as output volume. Choose a different output volume.')
-            return False
-
-        logging.info('Processing started')
-
-        # Compute the thresholded output volume using the Threshold Scalar Volume CLI module
-        cliParams = {'InputVolume': inputVolume.GetID(), 'OutputVolume': outputVolume.GetID(),
-                     'ThresholdValue': imageThreshold, 'ThresholdType': 'Above'}
-        cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True)
-
-        # Capture screenshot
-        if enableScreenshots:
-            self.takeScreenshot('InjectionTrajectoryPlannerTest-Start', 'MyScreenshot', -1)
-
-        logging.info('Processing completed')
-
-        return True
+        """ Run the actual algorithm """
+        pass
 
 
+# noinspection PyMethodMayBeStatic
 class InjectionTrajectoryPlannerTest(ScriptedLoadableModuleTest):
     """
   This is the test case for your scripted module.
@@ -333,5 +282,4 @@ class InjectionTrajectoryPlannerTest(ScriptedLoadableModuleTest):
     """
 
         self.delayDisplay("Starting the test")
-
         self.delayDisplay('Test passed!')
