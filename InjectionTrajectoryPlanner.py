@@ -1,33 +1,37 @@
 import os
 import unittest
-import vtk, qt, ctk, slicer
+import vtk
+import qt
+import ctk
+import slicer
 from slicer.ScriptedLoadableModule import *
 import logging
+
 
 #
 # InjectionTrajectoryPlanner
 #
 
 class InjectionTrajectoryPlanner(ScriptedLoadableModule):
-  """Uses ScriptedLoadableModule base class, available at:
+    """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-  def __init__(self, parent):
-    ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "InjectionTrajectoryPlanner" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SpineRobot"]
-    self.parent.dependencies = []
-    self.parent.contributors = ["Henry Phalen (Johns Hopkins University)"] # replace with "Firstname Lastname (Organization)"
-    self.parent.helpText = """
-This is an example of scripted loadable module bundled in an extension.
-It performs a simple thresholding on the input volume and optionally captures a screenshot.
+    def __init__(self, parent):
+        ScriptedLoadableModule.__init__(self, parent)
+        self.parent.title = "InjectionTrajectoryPlanner"  # TODO make this more human readable by adding spaces
+        self.parent.categories = ["SpineRobot"]
+        self.parent.dependencies = []
+        self.parent.contributors = [
+            "Henry Phalen (Johns Hopkins University)"]  # replace with "Firstname Lastname (Organization)"
+        self.parent.helpText = """
+This module can be used to plan injection trajectories.
 """
-    self.parent.helpText += self.getDefaultModuleDocumentationLink()
-    self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc.
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
-""" # replace with organization, grant and thanks.
+        self.parent.helpText += self.getDefaultModuleDocumentationLink()
+        self.parent.acknowledgementText = """
+This file was originally developed by Henry Phalen, a PhD student at Johns Hopkins University.
+"""  # replace with organization, grant and thanks.
+
 
 #
 # InjectionTrajectoryPlannerWidget
@@ -35,6 +39,7 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
 
 class SlicerMeshModel:
     """ Sets up transforms in Slicer and retains their information """
+
     def __init__(self, transform_name, mesh_filename):
         self.transform_name = transform_name
         self.mesh_filename = mesh_filename
@@ -47,240 +52,176 @@ class SlicerMeshModel:
         self.mesh_model_node.SetAndObserveTransformNodeID(self.transform_nodeID)
 
 
+# noinspection PyAttributeOutsideInit,PyMethodMayBeStatic
 class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
-  """Uses ScriptedLoadableModuleWidget base class, available at:
+    """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-  def setup(self):
-    ScriptedLoadableModuleWidget.setup(self)
-	
-    # Instantiate and connect widgets ...
+    def setup(self):
+        ScriptedLoadableModuleWidget.setup(self)
 
-    #
-    # Parameters Area
-    #
-    parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-    parametersCollapsibleButton.text = "Parameters"
-    self.layout.addWidget(parametersCollapsibleButton)
+        # Instantiate and connect widgets ...
 
-    # Layout within the dummy collapsible button
-    parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
+        #
+        # Parameters Area
+        #
+        parametersCollapsibleButton = ctk.ctkCollapsibleButton()
+        parametersCollapsibleButton.text = "Parameters"
+        self.layout.addWidget(parametersCollapsibleButton)
 
-    #w=slicer.qSlicerMarkupsPlaceWidget()
-    #markupsNodeID = slicer.modules.markups.logic().AddNewFiducialNode()
-    #w.setCurrentNode(slicer.mrmlScene.GetNodeByID(markupsNodeID))
-    # Hide all buttons and only show place button
-    #w.buttonsVisible=False
-    #w.placeButton().show()
-    #w.show()    
-    #w.placeButton().enabled = True
-    #parametersFormLayout.addWidget(w)
+        # Layout within the dummy collapsible button
+        parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
-    #
-    # input volume selector
-    #
-    import os
-    self.dir = os.path.dirname(__file__)
-    self.needle_filename = self.dir+'/Resources/meshes/50mm_18ga_needle.stl'
-    self.test_volume_data_filename = self.dir+'/Resources/volumes/test_spine_segmentation.nrrd'
-    self.test_ct_directory = self.dir + '/Resources/images/Case1 CT'  # input folder with DICOM files
+        #
+        # input volume selector
+        #
+        import os
+        self.dir = os.path.dirname(__file__)
+        self.needle_filename = self.dir + '/Resources/meshes/50mm_18ga_needle.stl'
+        self.test_volume_data_filename = self.dir + '/Resources/volumes/test_spine_segmentation.nrrd'
+        self.test_ct_directory = self.dir + '/Resources/images/Case1 CT'  # input folder with DICOM files
 
-    needle_transform_name = 'needle'
-    needleMeshModel = SlicerMeshModel(needle_transform_name, self.needle_filename)
+        needle_transform_name = 'needle'
+        needleMeshModel = SlicerMeshModel(needle_transform_name, self.needle_filename)
 
-    self.targetMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-    self.targetMarkupNode.SetName('Target')
-    n = slicer.modules.markups.logic().AddFiducial()
-    self.targetMarkupNode.SetNthFiducialLabel(n, "Target")
+        self.targetMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
+        self.targetMarkupNode.SetName('Target')
+        n = slicer.modules.markups.logic().AddFiducial()
+        self.targetMarkupNode.SetNthFiducialLabel(n, "Target")
 
-    # each markup is given a unique id which can be accessed from the superclass level
-    self.targetFiducialID = self.targetMarkupNode.GetNthMarkupID(n)
+        # each markup is given a unique id which can be accessed from the superclass level
+        self.targetFiducialID = self.targetMarkupNode.GetNthMarkupID(n)
 
+        self.referenceMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
+        self.referenceMarkupNode.SetName('Reference')
+        n = slicer.modules.markups.logic().AddFiducial()
+        self.referenceMarkupNode.SetNthFiducialLabel(n, "Reference")
+        # each markup is given a unique id which can be accessed from the superclass level
+        self.referenceFiducialID = self.referenceMarkupNode.GetNthMarkupID(n)
 
-    self.referenceMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-    self.referenceMarkupNode.SetName('Reference')
-    n = slicer.modules.markups.logic().AddFiducial()
-    self.referenceMarkupNode.SetNthFiducialLabel(n, "Reference")
-    # each markup is given a unique id which can be accessed from the superclass level
-    self.referenceFiducialID = self.referenceMarkupNode.GetNthMarkupID(n)
+        self.targetSelector = slicer.qMRMLNodeComboBox()
+        self.targetSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
+        self.targetSelector.selectNodeUponCreation = True
+        self.targetSelector.addEnabled = True
+        self.targetSelector.removeEnabled = False
+        self.targetSelector.noneEnabled = False
+        self.targetSelector.showHidden = False
+        self.targetSelector.showChildNodeTypes = False
+        self.targetSelector.setMRMLScene(slicer.mrmlScene)
+        self.targetSelector.setToolTip("Pick the target marker")
+        self.targetSelector.setCurrentNode(self.targetMarkupNode)
+        parametersFormLayout.addRow("Target Marker: ", self.targetSelector)
 
-    self.targetSelector = slicer.qMRMLNodeComboBox()
-    self.targetSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
-    self.targetSelector.selectNodeUponCreation = True
-    self.targetSelector.addEnabled = True
-    self.targetSelector.removeEnabled = False
-    self.targetSelector.noneEnabled = False
-    self.targetSelector.showHidden = False
-    self.targetSelector.showChildNodeTypes = False
-    self.targetSelector.setMRMLScene(slicer.mrmlScene)
-    self.targetSelector.setToolTip("Pick the target marker")
-    self.targetSelector.setCurrentNode(self.targetMarkupNode)
-    parametersFormLayout.addRow("Target Marker: ", self.targetSelector)
+        #
+        # output volume selector
+        #
+        self.beginSelector = slicer.qMRMLNodeComboBox()
+        self.beginSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
+        self.beginSelector.selectNodeUponCreation = True
+        self.beginSelector.addEnabled = True
+        self.beginSelector.removeEnabled = True
+        self.beginSelector.noneEnabled = False
+        self.beginSelector.showHidden = False
+        self.beginSelector.showChildNodeTypes = False
+        self.beginSelector.setMRMLScene(slicer.mrmlScene)
+        self.beginSelector.setToolTip("Pick the trajectory reference marker")
+        self.beginSelector.setCurrentNode(self.referenceMarkupNode)
 
-    #
-    # output volume selector
-    #
-    self.beginSelector = slicer.qMRMLNodeComboBox()
-    self.beginSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
-    self.beginSelector.selectNodeUponCreation = True
-    self.beginSelector.addEnabled = True
-    self.beginSelector.removeEnabled = True
-    self.beginSelector.noneEnabled = False
-    self.beginSelector.showHidden = False
-    self.beginSelector.showChildNodeTypes = False
-    self.beginSelector.setMRMLScene(slicer.mrmlScene)
-    self.beginSelector.setToolTip("Pick the trajectory reference marker")
-    self.beginSelector.setCurrentNode(self.referenceMarkupNode)
+        parametersFormLayout.addRow("Path Reference Marker: ", self.beginSelector)
 
-    parametersFormLayout.addRow("Path Reference Marker: ", self.beginSelector)
-    
+        self.rulerNode = slicer.vtkMRMLAnnotationRulerNode()
+        self.rulerNode.SetPosition1(-10, -10, -10)
+        self.rulerNode.SetPosition2(10, 10, 10)
+        self.rulerNode.SetLocked(1)
+        self.rulerNode.Initialize(slicer.mrmlScene)
+        self.rulerNode.SetTextScale(0)
 
-    self.rulerNode = slicer.vtkMRMLAnnotationRulerNode()
-    self.rulerNode.SetPosition1(-10,-10,-10)
-    self.rulerNode.SetPosition2(10,10,10)
-    self.rulerNode.SetLocked(1)
-    self.rulerNode.Initialize(slicer.mrmlScene)
-    self.rulerNode.SetTextScale(0)
+        self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
+                                          self.TargetMarkupModifiedCallback)
+        self.referenceMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
+                                             self.ReferenceMarkupModifiedCallback)
 
-    self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.TargetMarkupModifiedCallback)
-    self.referenceMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.ReferenceMarkupModifiedCallback)
-    
-    self.targetMarkupNode.SetNthFiducialPosition(0,0,0,0)
-    self.referenceMarkupNode.SetNthFiducialPosition(0,100,100,100)
+        self.targetMarkupNode.SetNthFiducialPosition(0, 0, 0, 0)
+        self.referenceMarkupNode.SetNthFiducialPosition(0, 100, 100, 100)
 
-#    self.red = slicer.mrmlScene.GetNodeByID('vtkMRMLSliceNodeRed')
-    
-#    self.targetTMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-#    self.targetTMarkupNode.SetName('TargetT')
-#    n = slicer.modules.markups.logic().AddFiducial()
-#    self.targetTMarkupNode.SetNthFiducialLabel(n, "TargetT")
-#    self.targetTMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.TargetTMarkupModifiedCallback)
+        # Add test volume/image data
+        self.addTestDataButton = qt.QPushButton("Add Test Data")
+        self.addTestDataButton.toolTip = "Add test volume/image data"
+        self.addTestDataButton.enabled = True
+        parametersFormLayout.addRow(self.addTestDataButton)
 
+        self.toggleSliceIntersectionButton = qt.QPushButton("Toggle Slice Intersections")
+        self.toggleSliceIntersectionButton.toolTip = "Turn on / off colored lines representing slice planes"
+        self.toggleSliceIntersectionButton.enabled = True
+        parametersFormLayout.addRow(self.toggleSliceIntersectionButton)
 
-    #.com
+        self.toggleSliceVisibilityButton = qt.QPushButton("Toggle Slice Visualization in Rendering")
+        self.toggleSliceVisibilityButton.toolTip = "Turn on/off Slice Visualization in 3D Rendering"
+        self.toggleSliceVisibilityButton.enabled = True
+        parametersFormLayout.addRow(self.toggleSliceVisibilityButton)
 
-    # threshold value
-    #
-    # self.imageThresholdSliderWidget = ctk.ctkSliderWidget()
-    # self.imageThresholdSliderWidget.singleStep = 0.1
-    # self.imageThresholdSliderWidget.minimum = -100
-    # self.imageThresholdSliderWidget.maximum = 100
-    # self.imageThresholdSliderWidget.value = 0.5
-    # self.imageThresholdSliderWidget.setToolTip("Set threshold value for computing the output image. Voxels that have intensities lower than this value will set to zero.")
-    # parametersFormLayout.addRow("Image threshold", self.imageThresholdSliderWidget)
+        self.moveTargetToIntersectionButton = qt.QPushButton("Move Target to Slice Intersection")
+        self.moveTargetToIntersectionButton.toolTip = "Align slice intersections (hover while pressing shift may " \
+                                                      "help). Click button to move target point here"
+        self.moveTargetToIntersectionButton.enabled = True
+        parametersFormLayout.addRow(self.moveTargetToIntersectionButton)
 
-    #
-    # check box to trigger taking screen shots for later use in tutorials
-    #
-    # self.enableScreenshotsFlagCheckBox = qt.QCheckBox()
-    # self.enableScreenshotsFlagCheckBox.checked = 0
-    # self.enableScreenshotsFlagCheckBox.setToolTip("If checked, take screen shots for tutorials. Use Save Data to write them to disk.")
-    # parametersFormLayout.addRow("Enable Screenshots", self.enableScreenshotsFlagCheckBox)
+        # connections
+        self.addTestDataButton.connect('clicked(bool)', self.onAddTestDataButton)
+        self.toggleSliceIntersectionButton.connect('clicked(bool)', self.onToggleSliceIntersectionButton)
+        self.toggleSliceVisibilityButton.connect('clicked(bool)', self.onToggleSliceVisibilityButton)
 
-    #
-    # Clear Button
-    #
-    # self.applyButton = qt.QPushButton("Apply")
-    # self.applyButton.toolTip = "Run the algorithm."
-    # self.applyButton.enabled = False
-    # parametersFormLayout.addRow(self.applyButton)
+        self.moveTargetToIntersectionButton.connect('clicked(bool)', self.onMoveTargetToIntersectionButton)
 
-    # Add test volume/image data
-    self.addTestDataButton = qt.QPushButton("Add Test Data")
-    self.addTestDataButton.toolTip = "Add test volume/image data"
-    self.addTestDataButton.enabled = True
-    parametersFormLayout.addRow(self.addTestDataButton)
+        # Add vertical spacer
+        self.layout.addStretch(1)
 
-    self.toggleSliceIntersectionButton = qt.QPushButton("Toggle Slice Intersections")
-    self.toggleSliceIntersectionButton.toolTip = "Turn on / off colored lines representing slice planes"
-    self.toggleSliceIntersectionButton.enabled = True
-    parametersFormLayout.addRow(self.toggleSliceIntersectionButton)
+        # Refresh Apply button state
+        # self.onSelect()
+        self.onToggleSliceIntersectionButton()  # Default is ON
 
-    self.toggleSliceVisibilityButton = qt.QPushButton("Toggle Slice Visualization in Rendering")
-    self.toggleSliceVisibilityButton.toolTip = "Turn on/off Slice Visualization in 3D Rendering"
-    self.toggleSliceVisibilityButton.enabled = True
-    parametersFormLayout.addRow(self.toggleSliceVisibilityButton)
+    def cleanup(self):
+        pass
 
 
-    self.moveTargetToIntersectionButton = qt.QPushButton("Move Target to Slice Intersection")
-    self.moveTargetToIntersectionButton.toolTip = "Align slice intersections (hover while pressing shift may help). Click button to move target point here"
-    self.moveTargetToIntersectionButton.enabled = True
-    parametersFormLayout.addRow(self.moveTargetToIntersectionButton)
+    def onAddTestDataButton(self):
+        logic = InjectionTrajectoryPlannerLogic()
+        logic.addTestData(self.test_volume_data_filename, self.test_ct_directory)
 
-    # connections
-    # self.applyButton.connect('clicked(bool)', self.onApplyButton)
-    self.addTestDataButton.connect('clicked(bool)', self.onAddTestDataButton)
-    self.toggleSliceIntersectionButton.connect('clicked(bool)', self.onToggleSliceIntersectionButton)
-    self.toggleSliceVisibilityButton.connect('clicked(bool)', self.onToggleSliceVisibilityButton)
+    def onToggleSliceIntersectionButton(self):
+        logic = InjectionTrajectoryPlannerLogic()
+        logic.toggleSliceIntersection()
 
-    self.moveTargetToIntersectionButton.connect('clicked(bool)', self.onMoveTargetToIntersectionButton)
+    def onToggleSliceVisibilityButton(self):
+        logic = InjectionTrajectoryPlannerLogic()
+        logic.toggleSliceVisibility()
 
+    def onMoveTargetToIntersectionButton(self):
+        logic = InjectionTrajectoryPlannerLogic()
+        logic.moveTargetToIntersectionButton()
 
+    # noinspection PyUnusedLocal
+    def TargetMarkupModifiedCallback(self, caller, event):
+        pos = [0, 0, 0]
+        self.targetMarkupNode.GetNthFiducialPosition(0, pos)
+        self.rulerNode.SetPosition1(pos)
+        # self.targetTMarkupNode.SetNthFiducialPosition(0,
 
-    # self.targetSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
-    # self.beginSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
-
-    # Add vertical spacer
-    self.layout.addStretch(1)
-
-    # Refresh Apply button state
-    # self.onSelect()
-    self.onToggleSliceIntersectionButton()  # Default is ON
-
-  def cleanup(self):
-    pass
-
-  # def onSelect(self):
-  #   self.applyButton.enabled = self.targetSelector.currentNode() and self.beginSelector.currentNode()
-
-  def onAddTestDataButton(self):
-    logic = InjectionTrajectoryPlannerLogic()
-    logic.addTestData(self.test_volume_data_filename, self.test_ct_directory)
-
-  def onToggleSliceIntersectionButton(self):
-    logic = InjectionTrajectoryPlannerLogic()
-    logic.toggleSliceIntersection()
-
-  def onToggleSliceVisibilityButton(self):
-    logic = InjectionTrajectoryPlannerLogic()
-    logic.toggleSliceVisibility()
-
-  def onMoveTargetToIntersectionButton(self):
-    logic = InjectionTrajectoryPlannerLogic()
-    logic.moveTargetToIntersectionButton()
-
-
-  # def onApplyButton(self):
-  #   logic = InjectionTrajectoryPlannerLogic()
-  #   enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
-  #   imageThreshold = self.imageThresholdSliderWidget.value
-  #   logic.run(self.targetSelector.currentNode(), self.beginSelector.currentNode(), imageThreshold, enableScreenshotsFlag)
-
-  def TargetMarkupModifiedCallback(self,caller,event):
-    pos = [0,0,0]
-    self.targetMarkupNode.GetNthFiducialPosition(0,pos)
-    self.rulerNode.SetPosition1(pos)
-    # self.targetTMarkupNode.SetNthFiducialPosition(0,
-
-  def ReferenceMarkupModifiedCallback(self,caller,event):
-    pos = [0,0,0]
-    self.referenceMarkupNode.GetNthFiducialPosition(0,pos)
-    self.rulerNode.SetPosition2(pos)
-
- # def TargetTMarkupModifiedCallback(self,caller,event):
-  #  pos = [0,0,0]
-   # self.referenceMarkupNode.GetNthFiducialPosition(0,pos)
-
-
+    # noinspection PyUnusedLocal
+    def ReferenceMarkupModifiedCallback(self, caller, event):
+        pos = [0, 0, 0]
+        self.referenceMarkupNode.GetNthFiducialPosition(0, pos)
+        self.rulerNode.SetPosition2(pos)
 
 
 #
 # InjectionTrajectoryPlannerLogic
 #
 
+# noinspection PyMethodMayBeStatic
 class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
-  """This class should implement all the actual
+    """This class should implement all the actual
   computation done by your module.  The interface
   should be such that other python code can import
   this class and make use of the functionality without
@@ -289,127 +230,71 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-  def addTestData(self, test_volume_data_filename, test_ct_directory):
-    # self.volumeDataNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumeNode')
-    # self.imageDataNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumeNode')
+    def addTestData(self, test_volume_data_filename, test_ct_directory):
 
-    """ Load volume data  """
-    _, label_volumeNode = slicer.util.loadLabelVolume(test_volume_data_filename, returnNode=True)
+        """ Load volume data  """
+        _, label_volumeNode = slicer.util.loadLabelVolume(test_volume_data_filename, returnNode=True)
 
-    # This is adapted from https://www.slicer.org/wiki/Documentation/4.3/Modules/VolumeRendering
-    # The effect is that the volume rendering changes when the segmentation array changes
-    slicer_logic = slicer.modules.volumerendering.logic()
-    displayNode = slicer_logic.CreateVolumeRenderingDisplayNode()
-    slicer.mrmlScene.AddNode(displayNode)
-    displayNode.UnRegister(slicer_logic)
-    slicer_logic.UpdateDisplayNodeFromVolumeNode(displayNode, label_volumeNode)
-    label_volumeNode.AddAndObserveDisplayNodeID(displayNode.GetID())
+        # This is adapted from https://www.slicer.org/wiki/Documentation/4.3/Modules/VolumeRendering
+        # The effect is that the volume rendering changes when the segmentation array changes
+        slicer_logic = slicer.modules.volumerendering.logic()
+        displayNode = slicer_logic.CreateVolumeRenderingDisplayNode()
+        slicer.mrmlScene.AddNode(displayNode)
+        displayNode.UnRegister(slicer_logic)
+        slicer_logic.UpdateDisplayNodeFromVolumeNode(displayNode, label_volumeNode)
+        label_volumeNode.AddAndObserveDisplayNodeID(displayNode.GetID())
 
-    """ Load image data  """
-    loadedNodeIDs = []  # this list will contain the list of all loaded node IDs
+        """ Load image data  """
 
-    from DICOMLib import DICOMUtils
-    with DICOMUtils.TemporaryDICOMDatabase() as db:
-      DICOMUtils.importDicom(test_ct_directory, db)
-      patientUIDs = db.patients()
-      for patientUID in patientUIDs:
-        # loadedNodeIDs.extend(DICOMUtils.loadPatientByUID(patientUID))
-        DICOMUtils.loadPatientByUID(patientUID)
-    # voxel_array = slicer.util.arrayFromVolume(label_volumeNode)
+        from DICOMLib import DICOMUtils
+        with DICOMUtils.TemporaryDICOMDatabase() as db:
+            DICOMUtils.importDicom(test_ct_directory, db)
+            patientUID = db.patients()[0]
+            DICOMUtils.loadPatientByUID(patientUID)
+        # voxel_array = slicer.util.arrayFromVolume(label_volumeNode)
 
-    # Resets focal point (pink wireframe bounding box) to center of scene
-    layoutManager = slicer.app.layoutManager()
-    threeDWidget = layoutManager.threeDWidget(0)
-    threeDView = threeDWidget.threeDView()
-    threeDView.resetFocalPoint()
+        # Resets focal point (pink wireframe bounding box) to center of scene
+        layoutManager = slicer.app.layoutManager()
+        threeDWidget = layoutManager.threeDWidget(0)
+        threeDView = threeDWidget.threeDView()
+        threeDView.resetFocalPoint()
 
-  def toggleSliceIntersection(self):
-    viewNodes = slicer.util.getNodesByClass('vtkMRMLSliceCompositeNode')
-    for viewNode in viewNodes:
-      viewNode.SetSliceIntersectionVisibility(int(not viewNode.GetSliceIntersectionVisibility()))
+    def toggleSliceIntersection(self):
+        viewNodes = slicer.util.getNodesByClass('vtkMRMLSliceCompositeNode')
+        for viewNode in viewNodes:
+            viewNode.SetSliceIntersectionVisibility(int(not viewNode.GetSliceIntersectionVisibility()))
 
-  def toggleSliceVisibility(self):
-    layoutManager = slicer.app.layoutManager()
-    for sliceViewName in layoutManager.sliceViewNames():
-      controller = layoutManager.sliceWidget(sliceViewName).sliceController()
-      controller.setSliceVisible(int(not controller.sliceLogic().GetSliceNode().GetSliceVisible()))
+    def toggleSliceVisibility(self):
+        layoutManager = slicer.app.layoutManager()
+        for sliceViewName in layoutManager.sliceViewNames():
+            controller = layoutManager.sliceWidget(sliceViewName).sliceController()
+            controller.setSliceVisible(int(not controller.sliceLogic().GetSliceNode().GetSliceVisible()))
 
-  def moveTargetToIntersectionButton(self):
-    layoutManager = slicer.app.layoutManager()
+    def moveTargetToIntersectionButton(self):
+        layoutManager = slicer.app.layoutManager()
 
 
-
-  def hasImageData(self,volumeNode):
-    """This is an example logic method that
-    returns true if the passed in volume
-    node has valid image data
-    """
-    if not volumeNode:
-      logging.debug('hasImageData failed: no volume node')
-      return False
-    if volumeNode.GetImageData() is None:
-      logging.debug('hasImageData failed: no image data in volume node')
-      return False
-    return True
-
-  def isValidInputOutputData(self, inputVolumeNode, outputVolumeNode):
-    """Validates if the output is not the same as input
-    """
-    if not inputVolumeNode:
-      logging.debug('isValidInputOutputData failed: no input volume node defined')
-      return False
-    if not outputVolumeNode:
-      logging.debug('isValidInputOutputData failed: no output volume node defined')
-      return False
-    if inputVolumeNode.GetID()==outputVolumeNode.GetID():
-      logging.debug('isValidInputOutputData failed: input and output volume is the same. Create a new volume for output to avoid this error.')
-      return False
-    return True
-
-  def run(self, inputVolume, outputVolume, imageThreshold, enableScreenshots=0):
-    """
-    Run the actual algorithm
-    """
-
-    if not self.isValidInputOutputData(inputVolume, outputVolume):
-      slicer.util.errorDisplay('Input volume is the same as output volume. Choose a different output volume.')
-      return False
-
-    logging.info('Processing started')
-
-    # Compute the thresholded output volume using the Threshold Scalar Volume CLI module
-    cliParams = {'InputVolume': inputVolume.GetID(), 'OutputVolume': outputVolume.GetID(), 'ThresholdValue' : imageThreshold, 'ThresholdType' : 'Above'}
-    cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True)
-
-    # Capture screenshot
-    if enableScreenshots:
-      self.takeScreenshot('InjectionTrajectoryPlannerTest-Start','MyScreenshot',-1)
-
-    logging.info('Processing completed')
-
-    return True
-
-
+# noinspection PyMethodMayBeStatic
 class InjectionTrajectoryPlannerTest(ScriptedLoadableModuleTest):
-  """
+    """
   This is the test case for your scripted module.
   Uses ScriptedLoadableModuleTest base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-  def setUp(self):
-    """ Do whatever is needed to reset the state - typically a scene clear will be enough.
+    def setUp(self):
+        """ Do whatever is needed to reset the state - typically a scene clear will be enough.
     """
-    slicer.mrmlScene.Clear(0)
+        slicer.mrmlScene.Clear(0)
 
-  def runTest(self):
-    """Run as few or as many tests as needed here.
+    def runTest(self):
+        """Run as few or as many tests as needed here.
     """
-    self.setUp()
-    self.test_InjectionTrajectoryPlanner1()
+        self.setUp()
+        self.test_InjectionTrajectoryPlanner1()
 
-  def test_InjectionTrajectoryPlanner1(self):
-    """ Ideally you should have several levels of tests.  At the lowest level
+    def test_InjectionTrajectoryPlanner1(self):
+        """ Ideally you should have several levels of tests.  At the lowest level
     tests should exercise the functionality of the logic with different inputs
     (both valid and invalid).  At higher levels your tests should emulate the
     way the user would interact with your code and confirm that it still works
@@ -420,18 +305,6 @@ class InjectionTrajectoryPlannerTest(ScriptedLoadableModuleTest):
     your test should break so they know that the feature is needed.
     """
 
-    self.delayDisplay("Starting the test")
-    #
-    # first, get some data
-    #
-    import SampleData
-    SampleData.downloadFromURL(
-      nodeNames='FA',
-      fileNames='FA.nrrd',
-      uris='http://slicer.kitware.com/midas3/download?items=5767')
-    self.delayDisplay('Finished with download and loading')
+        self.delayDisplay("Starting the test")
 
-    volumeNode = slicer.util.getNode(pattern="FA")
-    logic = InjectionTrajectoryPlannerLogic()
-    self.assertIsNotNone( logic.hasImageData(volumeNode) )
-    self.delayDisplay('Test passed!')
+        self.delayDisplay('Test passed!')
