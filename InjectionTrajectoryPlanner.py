@@ -6,11 +6,13 @@ import ctk
 import slicer
 from slicer.ScriptedLoadableModule import *
 import logging
+import os
 
 
 #
 # InjectionTrajectoryPlanner
 #
+
 
 class InjectionTrajectoryPlanner(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -36,6 +38,7 @@ This file was originally developed by Henry Phalen, a PhD student at Johns Hopki
 #
 # InjectionTrajectoryPlannerWidget
 #
+
 
 class SlicerMeshModel:
     """ Sets up transforms in Slicer and retains their information """
@@ -184,7 +187,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     def cleanup(self):
         pass
 
-
     def onAddTestDataButton(self):
         logic = InjectionTrajectoryPlannerLogic()
         logic.addTestData(self.test_volume_data_filename, self.test_ct_directory)
@@ -231,7 +233,6 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
   """
 
     def addTestData(self, test_volume_data_filename, test_ct_directory):
-
         """ Load volume data  """
         _, label_volumeNode = slicer.util.loadLabelVolume(test_volume_data_filename, returnNode=True)
 
@@ -245,7 +246,6 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         label_volumeNode.AddAndObserveDisplayNodeID(displayNode.GetID())
 
         """ Load image data  """
-
         from DICOMLib import DICOMUtils
         with DICOMUtils.TemporaryDICOMDatabase() as db:
             DICOMUtils.importDicom(test_ct_directory, db)
