@@ -25,11 +25,6 @@ def __init__(self, parent):
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """ """
 
-    self.dir = os.path.dirname(__file__)
-    self.needle_filename = self.dir + '/Resources/meshes/50mm_18ga_needle.stl'
-    self.test_volume_data_filename = self.dir + '/Resources/volumes/test_spine_segmentation.nrrd'
-    self.test_ct_directory = self.dir + '/Resources/images/Case1 CT'  # input folder with DICOM files
-
 
 class SlicerMeshModel:
     """ Sets up transforms in Slicer and retains their information """
@@ -46,7 +41,7 @@ class SlicerMeshModel:
         self.mesh_model_node.SetAndObserveTransformNodeID(self.transform_nodeID)
 
 
-# noinspection PyUnusedLocal,PyMethodMayBeStatic
+# noinspection PyUnusedLocal,PyMethodMayBeStatic,PyAttributeOutsideInit
 class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
@@ -64,6 +59,11 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
         # Layout within the dummy collapsible button
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
+
+        self.dir = os.path.dirname(__file__)
+        self.needle_filename = self.dir + '/Resources/meshes/50mm_18ga_needle.stl'
+        self.test_volume_data_filename = self.dir + '/Resources/volumes/test_spine_segmentation.nrrd'
+        self.test_ct_directory = self.dir + '/Resources/images/Case1 CT'  # input folder with DICOM files
 
         needle_transform_name = 'needle'
         needleMeshModel = SlicerMeshModel(needle_transform_name, self.needle_filename)
