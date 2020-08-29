@@ -170,19 +170,43 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.moveTargetToIntersectionButton.enabled = True
         parametersFormLayout.addRow(self.moveTargetToIntersectionButton)
 
+        self.moveReferenceToIntersectionButton = qt.QPushButton("Move Reference to Slice Intersection")
+        self.moveReferenceToIntersectionButton.toolTip = "Align slice intersections (hover while pressing shift may " \
+                                                      "help). Click button to move target point here"
+        self.moveReferenceToIntersectionButton.enabled = True
+        parametersFormLayout.addRow(self.moveReferenceToIntersectionButton)
+
+        self.jumpToTargetButton = qt.QPushButton("Change Slice View to Target Point")
+        self.jumpToTargetButton.toolTip = "Press to see the target point in all slices"
+        parametersFormLayout.addRow(self.jumpToTargetButton)
+
+        self.jumpToReferenceButton = qt.QPushButton("Change Slice View to Reference Point")
+        self.jumpToReferenceButton.toolTip = "Press to see the reference point in all slices"
+        parametersFormLayout.addRow(self.jumpToReferenceButton)
+
+
+
         # connections
         self.addTestDataButton.connect('clicked(bool)', self.onAddTestDataButton)
         self.toggleSliceIntersectionButton.connect('clicked(bool)', self.onToggleSliceIntersectionButton)
         self.toggleSliceVisibilityButton.connect('clicked(bool)', self.onToggleSliceVisibilityButton)
 
         self.moveTargetToIntersectionButton.connect('clicked(bool)', self.onMoveTargetToIntersectionButton)
+        self.moveReferenceToIntersectionButton.connect('clicked(bool)', self.onMoveReferenceToIntersectionButton)
+
+        self.jumpToTargetButton.connect('clicked(bool)', self.onJumpToTargetButton)
+        self.jumpToReferenceButton.connect('clicked(bool)', self.onJumpToReferenceButton)
+
 
         # Add vertical spacer
         self.layout.addStretch(1)
 
         # Refresh Apply button state
         # self.onSelect()
-        self.onToggleSliceIntersectionButton()  # Default is ON
+        viewNodes = slicer.util.getNodesByClass('vtkMRMLSliceCompositeNode')   # Default is ON
+        for viewNode in viewNodes:
+          viewNode.SetSliceIntersectionVisibility(1)
+
 
     def cleanup(self):
         pass
@@ -201,7 +225,19 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     def onMoveTargetToIntersectionButton(self):
         logic = InjectionTrajectoryPlannerLogic()
-        logic.moveTargetToIntersectionButton()
+        logic.moveTargetToIntersectionButton(self.targetMarkupNode)
+
+    def onMoveReferenceToIntersectionButton(self):
+        logic = InjectionTrajectoryPlannerLogic()
+        logic.moveReferenceToIntersectionButton(self.referenceMarkupNode)
+
+    def onJumpToTargetButton(self):
+        logic = InjectionTrajectoryPlannerLogic()
+        logic.jumpToMarkup(self.targetMarkupNode)
+
+    def onJumpToReferenceButton(self):
+        logic = InjectionTrajectoryPlannerLogic()
+        logic.jumpToMarkup(self.referenceMarkupNode)
 
     # noinspection PyUnusedLocal
     def TargetMarkupModifiedCallback(self, caller, event):
@@ -209,12 +245,14 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.targetMarkupNode.GetNthFiducialPosition(0, pos)
         self.rulerNode.SetPosition1(pos)
         # self.targetTMarkupNode.SetNthFiducialPosition(0,
+        self.rulerNode.SetTextScale(0)
 
     # noinspection PyUnusedLocal
     def ReferenceMarkupModifiedCallback(self, caller, event):
         pos = [0, 0, 0]
         self.referenceMarkupNode.GetNthFiducialPosition(0, pos)
         self.rulerNode.SetPosition2(pos)
+        self.rulerNode.SetTextScale(0)
 
 
 #
@@ -270,9 +308,26 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
             controller = layoutManager.sliceWidget(sliceViewName).sliceController()
             controller.setSliceVisible(int(not controller.sliceLogic().GetSliceNode().GetSliceVisible()))
 
-    def moveTargetToIntersectionButton(self):
-        layoutManager = slicer.app.layoutManager()
+    def moveTargetToIntersectionButton(self, targetMarkupNode):
+        # layoutManager = slicer.app.layoutManager()
+        crosshairNode = slicer.util.getNode('Crosshair')
+        crosshairPos = crosshairNode.GetCrosshairRAS()
+        targetMarkupNode.SetNthFiducialPosition(0, crosshairPos[0], crosshairPos[1], crosshairPos[2])
 
+
+    def moveReferenceToIntersectionButton(self, referenceMarkupNode):
+        # layoutManager = slicer.app.layoutManager()
+        crosshairNode = slicer.util.getNode('Crosshair')
+        crosshairPos = crosshairNode.GetCrosshairRAS()
+        referenceMarkupNode.SetNthFiducialPosition(0, crosshairPos[0], crosshairPos[1], crosshairPos[2])
+
+    def jumpToMarkup(self, MarkupNode):
+        pos = [0, 0, 0]
+        MarkupNode.GetNthFiducialPosition(0, pos)
+
+        for name in ['Red','Yellow','Green']:
+            sliceNode = slicer.app.layoutManager().sliceWidget(name).mrmlSliceNode()
+            sliceNode.JumpSlice(pos[0], pos[1], pos[2])
 
 # noinspection PyMethodMayBeStatic
 class InjectionTrajectoryPlannerTest(ScriptedLoadableModuleTest):
