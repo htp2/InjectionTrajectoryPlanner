@@ -8,6 +8,10 @@ from slicer.ScriptedLoadableModule import *
 import logging
 import os
 
+#
+# InjectionTrajectoryPlanner
+#
+
 
 class InjectionTrajectoryPlanner(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -21,9 +25,13 @@ def __init__(self, parent):
     self.parent.categories = ["SpineRobot"]
     self.parent.dependencies = []
     self.parent.contributors = ["Henry Phalen (Johns Hopkins University)"]
-    self.parent.helpText = """ """
+    self.parent.helpText = """ _ """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
-    self.parent.acknowledgementText = """ """
+    self.parent.acknowledgementText = """ _ """
+
+#
+# InjectionTrajectoryPlannerWidget
+#
 
 
 class SlicerMeshModel:
@@ -179,7 +187,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     def onMoveTargetToIntersectionButton(self):
         logic = InjectionTrajectoryPlannerLogic()
-        logic.moveTargetToIntersectionButton()
+        logic.moveTargetToIntersectionButton(self.targetMarkupNode)
 
     def TargetMarkupModifiedCallback(self, caller, event):
         pos = [0, 0, 0]
@@ -192,7 +200,10 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.rulerNode.SetPosition2(pos)
 
 
+#
 # InjectionTrajectoryPlannerLogic
+#
+
 # noinspection PyMethodMayBeStatic
 class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
@@ -242,8 +253,9 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
             controller = layoutManager.sliceWidget(sliceViewName).sliceController()
             controller.setSliceVisible(int(not controller.sliceLogic().GetSliceNode().GetSliceVisible()))
 
-    def moveTargetToIntersectionButton(self):
+    def moveTargetToIntersectionButton(self, targetMarkupNode):
         layoutManager = slicer.app.layoutManager()
+        self.targetMarkupNode.SetNthFiducialPosition(0, 0, 0, 0)
 
     def run(self, inputVolume, outputVolume, imageThreshold, enableScreenshots=0):
         """ Run the actual algorithm """
