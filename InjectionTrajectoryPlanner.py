@@ -119,29 +119,21 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         #
         # input volume selector
         #
-        import os
         self.dir = os.path.dirname(__file__)
-        # self.needle_filename = self.dir + '/Resources/meshes/50mm_18ga_needle.stl'
+        self.needle_filename = self.dir + '/Resources/meshes/50mm_18ga_needle.stl'
         self.test_volume_data_filename = self.dir + '/Resources/volumes/test_spine_segmentation.nrrd'
         self.test_ct_directory = self.dir + '/Resources/images/Case1 CT'  # input folder with DICOM files
 
-        # needle_transform_name = 'needle'
-        # needleMeshModel = SlicerMeshModel(needle_transform_name, self.needle_filename)
+        needle_transform_name = 'needle'
+        needleMeshModel = SlicerMeshModel(needle_transform_name, self.needle_filename)
 
+        """Target Point Markup & Selector"""
         self.targetMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
         self.targetMarkupNode.SetName('Target')
         n = slicer.modules.markups.logic().AddFiducial()
         self.targetMarkupNode.SetNthFiducialLabel(n, "Target")
-
         # each markup is given a unique id which can be accessed from the superclass level
         self.targetFiducialID = self.targetMarkupNode.GetNthMarkupID(n)
-
-        self.EntryMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-        self.EntryMarkupNode.SetName('Entry')
-        n = slicer.modules.markups.logic().AddFiducial()
-        self.EntryMarkupNode.SetNthFiducialLabel(n, "Entry")
-        # each markup is given a unique id which can be accessed from the superclass level
-        self.EntryFiducialID = self.EntryMarkupNode.GetNthMarkupID(n)
 
         self.targetSelector = slicer.qMRMLNodeComboBox()
         self.targetSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
@@ -156,9 +148,14 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.targetSelector.setCurrentNode(self.targetMarkupNode)
         parametersFormLayout.addRow("Target Marker: ", self.targetSelector)
 
-        #
-        # output volume selector
-        #
+        """Entry Point Markup & Selector"""
+        self.EntryMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
+        self.EntryMarkupNode.SetName('Entry')
+        n = slicer.modules.markups.logic().AddFiducial()
+        self.EntryMarkupNode.SetNthFiducialLabel(n, "Entry")
+        # each markup is given a unique id which can be accessed from the superclass level
+        self.EntryFiducialID = self.EntryMarkupNode.GetNthMarkupID(n)
+
         self.beginSelector = slicer.qMRMLNodeComboBox()
         self.beginSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
         self.beginSelector.selectNodeUponCreation = True
@@ -170,15 +167,14 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.beginSelector.setMRMLScene(slicer.mrmlScene)
         self.beginSelector.setToolTip("Pick the trajectory Entry marker")
         self.beginSelector.setCurrentNode(self.EntryMarkupNode)
-
         parametersFormLayout.addRow("Path Entry Marker: ", self.beginSelector)
 
+
+        """Trajectory Line (Ruler)"""
         self.rulerNode = slicer.vtkMRMLAnnotationRulerNode()
-        self.rulerNode.SetPosition1(-10, -10, -10)
-        self.rulerNode.SetPosition2(10, 10, 10)
         self.rulerNode.SetLocked(1)
         self.rulerNode.Initialize(slicer.mrmlScene)
-        self.rulerNode.SetTextScale(0)
+        # self.rulerNode.SetTextScale(0)
         self.rulerNode.SetName('Trajectory')
 
         self.rulerTextNode = self.rulerNode.GetAnnotationTextDisplayNode()
@@ -192,51 +188,63 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
                                           self.TargetMarkupModifiedCallback)
         self.EntryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
                                          self.EntryMarkupModifiedCallback)
-
         self.targetMarkupNode.SetNthFiducialPosition(0, 0, 0, 0)
         self.EntryMarkupNode.SetNthFiducialPosition(0, 100, 100, 100)
 
-        # Add test volume/image data
+        """Add Test Data Button"""
         self.addTestDataButton = qt.QPushButton("Add Test Data")
         self.addTestDataButton.toolTip = "Add test volume/image data"
         self.addTestDataButton.enabled = True
         parametersFormLayout.addRow(self.addTestDataButton)
 
+        """Toggle Slice Intersections Button"""
         self.toggleSliceIntersectionButton = qt.QPushButton("Toggle Slice Intersections")
         self.toggleSliceIntersectionButton.toolTip = "Turn on / off colored lines representing slice planes"
         self.toggleSliceIntersectionButton.enabled = True
         parametersFormLayout.addRow(self.toggleSliceIntersectionButton)
+        self.viewNodes = slicer.util.getNodesByClass('vtkMRMLSliceCompositeNode')  # Default is ON
+        for viewNode in self.viewNodes:
+            viewNode.SetSliceIntersectionVisibility(1)
 
+        """Toggle Slice Visualization Button [TODO:Separate to 3]"""
         self.toggleSliceVisibilityButton = qt.QPushButton("Toggle Slice Visualization in Rendering")
         self.toggleSliceVisibilityButton.toolTip = "Turn on/off Slice Visualization in 3D Rendering"
         self.toggleSliceVisibilityButton.enabled = True
         parametersFormLayout.addRow(self.toggleSliceVisibilityButton)
 
+        """Set Target Point Button"""
         self.moveTargetToIntersectionButton = qt.QPushButton("SET Target Point to Slice Intersection")
         self.moveTargetToIntersectionButton.toolTip = "Align slice intersections (hover while pressing shift may " \
                                                       "help). Click button to move target point here"
         self.moveTargetToIntersectionButton.enabled = True
         parametersFormLayout.addRow(self.moveTargetToIntersectionButton)
 
+        """Set Entry Point Button"""
         self.moveEntryToIntersectionButton = qt.QPushButton("SET Entry Point to Slice Intersection")
         self.moveEntryToIntersectionButton.toolTip = "Align slice intersections (hover while pressing shift may " \
                                                      "help). Click button to move target point here"
         self.moveEntryToIntersectionButton.enabled = True
         parametersFormLayout.addRow(self.moveEntryToIntersectionButton)
 
+        """Jump To Target Point Button"""
         self.jumpToTargetButton = qt.QPushButton("View Target Point")
         self.jumpToTargetButton.toolTip = "Press to see the target point in all slices"
         parametersFormLayout.addRow(self.jumpToTargetButton)
 
+        """Jump To Entry Point Button"""
         self.jumpToEntryButton = qt.QPushButton("View Entry Point")
         self.jumpToEntryButton.toolTip = "Press to see the Entry point in all slices"
         parametersFormLayout.addRow(self.jumpToEntryButton)
 
+        """Look Down Trajectory Button"""
         self.alignAxesToTrajectoryButton = qt.QPushButton("Change Slice Views to look down trajectory")
         self.alignAxesToTrajectoryButton.toolTip = "Axial view switches to down-trajectory view. " \
                                                    "Other planes rotate by same amount to remain orthogonal"
         parametersFormLayout.addRow(self.alignAxesToTrajectoryButton)
+        self.crosshairNode = slicer.util.getNode('Crosshair')  # Make sure exists
+        self.crosshairPos = self.crosshairNode.SetCrosshairRAS(0, 0, 0)
 
+        """Standard View Button"""
         self.alignAxesToASCButton = qt.QPushButton("Change Slice Views to standard A-S-C")
         self.alignAxesToASCButton.toolTip = "Returns to default axial, sagittal, coronal slice views"
         parametersFormLayout.addRow(self.alignAxesToASCButton)
@@ -257,15 +265,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
         # Add vertical spacer
         self.layout.addStretch(1)
-
-        # Refresh Apply button state
-        # self.onSelect()
-        viewNodes = slicer.util.getNodesByClass('vtkMRMLSliceCompositeNode')  # Default is ON
-        for viewNode in viewNodes:
-            viewNode.SetSliceIntersectionVisibility(1)
-
-        crosshairNode = slicer.util.getNode('Crosshair')  # Make sure exists
-        crosshairPos = crosshairNode.SetCrosshairRAS(0, 0, 0)
 
     def cleanup(self):
         pass
@@ -510,5 +509,5 @@ class InjectionTrajectoryPlannerTest(ScriptedLoadableModuleTest):
     """
 
         self.delayDisplay("Starting the test")
-
+        # No tests for now
         self.delayDisplay('Test passed!')
