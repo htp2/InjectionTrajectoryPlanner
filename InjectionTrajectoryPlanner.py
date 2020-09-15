@@ -7,12 +7,10 @@ import slicer
 from slicer.ScriptedLoadableModule import *
 import logging
 import os
-
-
-#
+from Resources.slicer_helper import slicer_helper as sh
+import numpy as np
 # InjectionTrajectoryPlanner
 #
-
 
 class InjectionTrajectoryPlanner(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -70,29 +68,28 @@ def setSlicePoseFromSliceNormalAndPosition(sliceNode, sliceNormal, slicePosition
     else:
         sliceAxisX = backupViewRightDirection
         # Set slice axes
-        sliceNode.SetSliceToRASByNTP(sliceNormalStandardized[0], sliceNormalStandardized[1], sliceNormalStandardized[2],
-                                     sliceAxisX[0], sliceAxisX[1], sliceAxisX[2],
-                                     slicePosition[0], slicePosition[1], slicePosition[2], 0)
+    sliceNode.SetSliceToRASByNTP(sliceNormalStandardized[0], sliceNormalStandardized[1], sliceNormalStandardized[2],
+                                 sliceAxisX[0], sliceAxisX[1], sliceAxisX[2],
+                                 slicePosition[0], slicePosition[1], slicePosition[2], 0)
 
 
 #
 # InjectionTrajectoryPlannerWidget
 #
 
-
-class SlicerMeshModel:
-    """ Sets up transforms in Slicer and retains their information """
-
-    def __init__(self, transform_name, mesh_filename):
-        self.transform_name = transform_name
-        self.mesh_filename = mesh_filename
-        _, self.mesh_model_node = slicer.util.loadModel(mesh_filename, returnNode=True)
-        self.mesh_nodeID = self.mesh_model_node.GetID()
-        self.transform_node = slicer.vtkMRMLTransformNode()
-        self.transform_node.SetName(transform_name)
-        slicer.mrmlScene.AddNode(self.transform_node)
-        self.transform_nodeID = self.transform_node.GetID()
-        self.mesh_model_node.SetAndObserveTransformNodeID(self.transform_nodeID)
+# class SlicerMeshModel:
+#     """ Sets up transforms in Slicer and retains their information """
+#
+#     def __init__(self, transform_name, mesh_filename):
+#         self.transform_name = transform_name
+#         self.mesh_filename = mesh_filename
+#         _, self.mesh_model_node = slicer.util.loadModel(mesh_filename, returnNode=True)
+#         self.mesh_nodeID = self.mesh_model_node.GetID()
+#         self.transform_node = slicer.vtkMRMLTransformNode()
+#         self.transform_node.SetName(transform_name)
+#         slicer.mrmlScene.AddNode(self.transform_node)
+#         self.transform_nodeID = self.transform_node.GetID()
+#         self.mesh_model_node.SetAndObserveTransformNodeID(self.transform_nodeID)
 
 
 # noinspection PyAttributeOutsideInit,PyMethodMayBeStatic
@@ -124,9 +121,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.test_volume_data_filename = self.dir + '/Resources/volumes/test_spine_segmentation.nrrd'
         self.test_ct_directory = self.dir + '/Resources/images/Case1 CT'  # input folder with DICOM files
 
-        needle_transform_name = 'needle'
-        needleMeshModel = SlicerMeshModel(needle_transform_name, self.needle_filename)
-
         """Target Point Markup & Selector"""
         self.targetMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
         self.targetMarkupNode.SetName('Target')
@@ -156,19 +150,38 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         # each markup is given a unique id which can be accessed from the superclass level
         self.EntryFiducialID = self.EntryMarkupNode.GetNthMarkupID(n)
 
-        self.beginSelector = slicer.qMRMLNodeComboBox()
-        self.beginSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
-        self.beginSelector.selectNodeUponCreation = True
-        self.beginSelector.addEnabled = True
-        self.beginSelector.removeEnabled = True
-        self.beginSelector.noneEnabled = False
-        self.beginSelector.showHidden = False
-        self.beginSelector.showChildNodeTypes = False
-        self.beginSelector.setMRMLScene(slicer.mrmlScene)
-        self.beginSelector.setToolTip("Pick the trajectory Entry marker")
-        self.beginSelector.setCurrentNode(self.EntryMarkupNode)
-        parametersFormLayout.addRow("Path Entry Marker: ", self.beginSelector)
+        self.entrySelector = slicer.qMRMLNodeComboBox()
+        self.entrySelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
+        self.entrySelector.selectNodeUponCreation = True
+        self.entrySelector.addEnabled = True
+        self.entrySelector.removeEnabled = True
+        self.entrySelector.noneEnabled = False
+        self.entrySelector.showHidden = False
+        self.entrySelector.showChildNodeTypes = False
+        self.entrySelector.setMRMLScene(slicer.mrmlScene)
+        self.entrySelector.setToolTip("Pick the trajectory Entry marker")
+        self.entrySelector.setCurrentNode(self.EntryMarkupNode)
+        parametersFormLayout.addRow("Path Entry Marker: ", self.entrySelector)
 
+        """Tool Model Markup & Selector"""
+        needle_transform_name = 'needle'
+        self.toolMeshModel = sh.SlicerMeshModel(needle_transform_name, self.needle_filename)
+        print(self.toolMeshModel)
+        self.toolMeshModel.display_node.SetSliceIntersectionVisibility(True)
+        self.toolMeshModel.display_node.SetSliceDisplayModeToProjection()
+
+        self.toolModelSelector = slicer.qMRMLNodeComboBox()
+        self.toolModelSelector.nodeTypes = ["vtkMRMLModelNode"]
+        self.toolModelSelector.selectNodeUponCreation = True
+        self.toolModelSelector.addEnabled = True
+        self.toolModelSelector.removeEnabled = True
+        self.toolModelSelector.noneEnabled = False
+        self.toolModelSelector.showHidden = False
+        self.toolModelSelector.showChildNodeTypes = False
+        self.toolModelSelector.setMRMLScene(slicer.mrmlScene)
+        self.toolModelSelector.setToolTip("Pick the tool model")
+        self.toolModelSelector.setCurrentNode(self.toolMeshModel.mesh_model_node)
+        parametersFormLayout.addRow("Tool Model: ", self.toolModelSelector)
 
         """Trajectory Line (Ruler)"""
         self.rulerNode = slicer.vtkMRMLAnnotationRulerNode()
@@ -320,18 +333,40 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     # noinspection PyUnusedLocal
     def TargetMarkupModifiedCallback(self, caller, event):
-        pos = [0, 0, 0]
+        pos = [0.0, 0.0, 0.0]
         self.targetMarkupNode.GetNthFiducialPosition(0, pos)
         self.rulerNode.SetPosition1(pos)
         # self.targetTMarkupNode.SetNthFiducialPosition(0,
         self.rulerNode.SetTextScale(0)
+        self.UpdateToolModel()
 
     # noinspection PyUnusedLocal
     def EntryMarkupModifiedCallback(self, caller, event):
-        pos = [0, 0, 0]
+        pos = [0.0, 0.0, 0.0]
         self.EntryMarkupNode.GetNthFiducialPosition(0, pos)
         self.rulerNode.SetPosition2(pos)
         self.rulerNode.SetTextScale(0)
+        self.UpdateToolModel()
+
+    def UpdateToolModel(self):
+        transform = np.eye(4)
+        target_pos = np.array([0.0, 0.0, 0.0])
+        entry_pos = np.array([0.0, 0.0, 0.0])
+        self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
+        self.EntryMarkupNode.GetNthFiducialPosition(0, entry_pos)
+        traj_vec = target_pos - entry_pos
+        z_vec = traj_vec
+        x_vec = np.array([-z_vec[1], z_vec[0], 0])
+        y_vec = np.cross(z_vec, x_vec)
+        x_vec = x_vec / np.linalg.norm(x_vec)  # normalize
+        y_vec = y_vec / np.linalg.norm(y_vec)
+        z_vec = z_vec / np.linalg.norm(z_vec)
+
+        transform[0:3, 0] = x_vec
+        transform[0:3, 1] = y_vec
+        transform[0:3, 2] = z_vec
+        transform[0:3, 3] = target_pos
+        sh.updateTransformMatrixFromArray(self.toolMeshModel.transform_node, transform)
 
 
 #
@@ -363,6 +398,7 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         label_volumeNode.AddAndObserveDisplayNodeID(displayNode.GetID())
 
         """ Load image data  """
+        # noinspection PyUnresolvedReferences
         from DICOMLib import DICOMUtils
         with DICOMUtils.TemporaryDICOMDatabase() as db:
             DICOMUtils.importDicom(test_ct_directory, db)
@@ -400,7 +436,7 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         EntryMarkupNode.SetNthFiducialPosition(0, crosshairPos[0], crosshairPos[1], crosshairPos[2])
 
     def jumpToMarkup(self, MarkupNode):
-        pos = [0, 0, 0]
+        pos = [0.0, 0.0, 0.0]
         MarkupNode.GetNthFiducialPosition(0, pos)
 
         for name in ['Red', 'Yellow', 'Green']:
@@ -418,8 +454,8 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         yellowSliceToRAS = yellowSliceNode.GetSliceToRAS()
         greenSliceToRAS = greenSliceNode.GetSliceToRAS()
 
-        p_target = np.array([0, 0, 0])
-        p_Entry = np.array([0, 0, 0])
+        p_target = np.array([0.0, 0.0, 0.0])
+        p_Entry = np.array([0.0, 0.0, 0.0])
 
         targetMarkupNode.GetNthFiducialPosition(0, p_target)
         EntryMarkupNode.GetNthFiducialPosition(0, p_Entry)
@@ -460,7 +496,7 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         redSliceNode.SetOrientationToAxial()
         yellowSliceNode.SetOrientationToSagittal()
         greenSliceNode.SetOrientationToCoronal()
-        p_target = np.array([0, 0, 0])
+        p_target = np.array([0.0, 0.0, 0.0])
         targetMarkupNode.GetNthFiducialPosition(0, p_target)
 
         redSliceToRAS = redSliceNode.GetSliceToRAS()
