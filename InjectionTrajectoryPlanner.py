@@ -113,6 +113,11 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         # Layout within the dummy collapsible button
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
+        slicevizCollapsibleButton = ctk.ctkCollapsibleButton()
+        slicevizCollapsibleButton.text = "Toggle Slice Display in 3D View"
+        self.layout.addWidget(slicevizCollapsibleButton)
+        slicevizFormLayout = qt.QFormLayout(slicevizCollapsibleButton)
+
         #
         # input volume selector
         #
@@ -220,10 +225,17 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             viewNode.SetSliceIntersectionVisibility(1)
 
         """Toggle Slice Visualization Button [TODO:Separate to 3]"""
-        self.toggleSliceVisibilityButton = qt.QPushButton("Toggle Slice Visualization in Rendering")
-        self.toggleSliceVisibilityButton.toolTip = "Turn on/off Slice Visualization in 3D Rendering"
-        self.toggleSliceVisibilityButton.enabled = True
-        parametersFormLayout.addRow(self.toggleSliceVisibilityButton)
+        self.toggleSliceVisibilityButtonLayout = qt.QHBoxLayout()
+        self.toggleRedSliceVisibilityButton = qt.QPushButton("RED")
+        self.toggleRedSliceVisibilityButton.toolTip = "Turn on/off Red Slice Visualization in 3D Rendering"
+        self.toggleYellowSliceVisibilityButton = qt.QPushButton("YELLOW")
+        self.toggleYellowSliceVisibilityButton.toolTip = "Turn on/off Yellow Slice Visualization in 3D Rendering"
+        self.toggleGreenSliceVisibilityButton = qt.QPushButton("GREEN")
+        self.toggleGreenSliceVisibilityButton.toolTip = "Turn on/off Green Slice Visualization in 3D Rendering"
+        self.toggleSliceVisibilityButtonLayout.addWidget(self.toggleRedSliceVisibilityButton)
+        self.toggleSliceVisibilityButtonLayout.addWidget(self.toggleYellowSliceVisibilityButton)
+        self.toggleSliceVisibilityButtonLayout.addWidget(self.toggleGreenSliceVisibilityButton)
+        slicevizFormLayout.addRow(self.toggleSliceVisibilityButtonLayout)
 
         """Set Target Point Button"""
         self.moveTargetToIntersectionButton = qt.QPushButton("SET Target Point to Slice Intersection")
@@ -265,7 +277,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         # connections
         self.addTestDataButton.connect('clicked(bool)', self.onAddTestDataButton)
         self.toggleSliceIntersectionButton.connect('clicked(bool)', self.onToggleSliceIntersectionButton)
-        self.toggleSliceVisibilityButton.connect('clicked(bool)', self.onToggleSliceVisibilityButton)
 
         self.moveTargetToIntersectionButton.connect('clicked(bool)', self.onMoveTargetToIntersectionButton)
         self.moveEntryToIntersectionButton.connect('clicked(bool)', self.onMoveEntryToIntersectionButton)
@@ -275,6 +286,10 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
         self.alignAxesToTrajectoryButton.connect('clicked(bool)', self.onAlignAxesToTrajectoryButton)
         self.alignAxesToASCButton.connect('clicked(bool)', self.onAlignAxesToASCButton)
+
+        self.toggleRedSliceVisibilityButton.connect('clicked(bool)', self.onToggleRedSliceVisibilityButton)
+        self.toggleYellowSliceVisibilityButton.connect('clicked(bool)', self.onToggleYellowSliceVisibilityButton)
+        self.toggleGreenSliceVisibilityButton.connect('clicked(bool)', self.onToggleGreenSliceVisibilityButton)
 
         # Add vertical spacer
         self.layout.addStretch(1)
@@ -291,9 +306,17 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         logic = InjectionTrajectoryPlannerLogic()
         logic.toggleSliceIntersection()
 
-    def onToggleSliceVisibilityButton(self):
+    def onToggleRedSliceVisibilityButton(self):
         logic = InjectionTrajectoryPlannerLogic()
-        logic.toggleSliceVisibility()
+        logic.toggleSliceVisibility('Red')
+
+    def onToggleYellowSliceVisibilityButton(self):
+        logic = InjectionTrajectoryPlannerLogic()
+        logic.toggleSliceVisibility('Yellow')
+
+    def onToggleGreenSliceVisibilityButton(self):
+        logic = InjectionTrajectoryPlannerLogic()
+        logic.toggleSliceVisibility('Green')
 
     def onMoveTargetToIntersectionButton(self):
         logic = InjectionTrajectoryPlannerLogic()
@@ -358,9 +381,9 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         z_vec = traj_vec
         x_vec = np.array([-z_vec[1], z_vec[0], 0])
         y_vec = np.cross(z_vec, x_vec)
-        x_vec = x_vec / np.linalg.norm(x_vec)  # normalize
-        y_vec = y_vec / np.linalg.norm(y_vec)
-        z_vec = z_vec / np.linalg.norm(z_vec)
+        x_vec = x_vec / max(np.linalg.norm(x_vec), 1e-8)  # normalize, with protection against zero or nearzero vector
+        y_vec = y_vec / max(np.linalg.norm(y_vec), 1e-8)
+        z_vec = z_vec / max(np.linalg.norm(z_vec), 1e-8)
 
         transform[0:3, 0] = x_vec
         transform[0:3, 1] = y_vec
@@ -417,11 +440,12 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         for viewNode in viewNodes:
             viewNode.SetSliceIntersectionVisibility(int(not viewNode.GetSliceIntersectionVisibility()))
 
-    def toggleSliceVisibility(self):
+    def toggleSliceVisibility(self, name):
         layoutManager = slicer.app.layoutManager()
         for sliceViewName in layoutManager.sliceViewNames():
-            controller = layoutManager.sliceWidget(sliceViewName).sliceController()
-            controller.setSliceVisible(int(not controller.sliceLogic().GetSliceNode().GetSliceVisible()))
+            if sliceViewName == name:
+                controller = layoutManager.sliceWidget(sliceViewName).sliceController()
+                controller.setSliceVisible(int(not controller.sliceLogic().GetSliceNode().GetSliceVisible()))
 
     def moveTargetToIntersectionButton(self, targetMarkupNode):
         # layoutManager = slicer.app.layoutManager()
