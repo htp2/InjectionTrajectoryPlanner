@@ -9,6 +9,8 @@ import logging
 import os
 from Resources.slicer_helper import slicer_helper as sh
 import numpy as np
+
+
 # InjectionTrajectoryPlanner
 #
 
@@ -169,6 +171,24 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         parametersFormLayout.addRow("Path Entry Marker: ", self.entrySelector)
 
         """Tool Model Markup & Selector"""
+        self.entry_transform_node = slicer.vtkMRMLTransformNode()
+        self.entry_transform_node.SetName('needle_entry')
+        slicer.mrmlScene.AddNode(self.entry_transform_node)
+
+        self.hand_eye_node = slicer.vtkMRMLTransformNode()
+        self.hand_eye_node.SetName('hand_eye')
+        slicer.mrmlScene.AddNode(self.hand_eye_node)
+
+        self.robot_ee_entry = slicer.vtkMRMLTransformNode()
+        self.robot_ee_entry.SetName('robot_ee_entry')
+        slicer.mrmlScene.AddNode(self.robot_ee_entry)
+
+        self.robot_ee_target = slicer.vtkMRMLTransformNode()
+        self.robot_ee_target.SetName('robot_ee_target')
+        slicer.mrmlScene.AddNode(self.robot_ee_target)
+        #	self.entry_ee = self.entry_transform_node*inv(self.hand_eye)
+        #	self.target_ee = self.toolMeshModel.transform_node*inv(self.hand_eye)
+
         needle_transform_name = 'needle'
         self.toolMeshModel = sh.SlicerMeshModel(needle_transform_name, self.needle_filename)
         print(self.toolMeshModel)
@@ -391,6 +411,22 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         transform[0:3, 3] = target_pos
         sh.updateTransformMatrixFromArray(self.toolMeshModel.transform_node, transform)
 
+        entry_transform = np.eye(4)
+        entry_transform[0:3, 0] = x_vec
+        entry_transform[0:3, 1] = y_vec
+        entry_transform[0:3, 2] = z_vec
+        entry_transform[0:3, 3] = entry_pos
+
+        sh.updateTransformMatrixFromArray(self.entry_transform_node, entry_transform)
+
+        hand_eye_transform = np.eye(4)
+        hand_eye_transform = sh.arrayFromTransformMatrix(self.hand_eye_node)
+        robot_ee_target_transform = np.matmul(np.linalg.inv(hand_eye_transform), transform)
+        sh.updateTransformMatrixFromArray(self.robot_ee_target, robot_ee_target_transform)
+
+        robot_ee_entry_transform = np.matmul(np.linalg.inv(hand_eye_transform), entry_transform)
+        sh.updateTransformMatrixFromArray(self.robot_ee_entry, robot_ee_entry_transform)
+
 
 #
 # InjectionTrajectoryPlannerLogic
@@ -467,7 +503,7 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
             sliceNode = slicer.app.layoutManager().sliceWidget(name).mrmlSliceNode()
             sliceNode.JumpSlice(pos[0], pos[1], pos[2])
 
-    def alignAxesWithTrajectory(self, targetMarkupNode, EntryMarkupNode):
+    def alignAxesWithTrajectory(self, targetMarkupNode, EntryMarkupNode0):
         import numpy as np
 
         redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
@@ -511,6 +547,7 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         greenSliceToRAS.SetElement(2, 3, p_target[2])
 
         greenSliceNode.UpdateMatrices()
+
 
     def resetAxesToASC(self, targetMarkupNode):
         import numpy as np
