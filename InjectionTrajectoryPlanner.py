@@ -75,25 +75,6 @@ def setSlicePoseFromSliceNormalAndPosition(sliceNode, sliceNormal, slicePosition
                                  slicePosition[0], slicePosition[1], slicePosition[2], 0)
 
 
-#
-# InjectionTrajectoryPlannerWidget
-#
-
-# class SlicerMeshModel:
-#     """ Sets up transforms in Slicer and retains their information """
-#
-#     def __init__(self, transform_name, mesh_filename):
-#         self.transform_name = transform_name
-#         self.mesh_filename = mesh_filename
-#         _, self.mesh_model_node = slicer.util.loadModel(mesh_filename, returnNode=True)
-#         self.mesh_nodeID = self.mesh_model_node.GetID()
-#         self.transform_node = slicer.vtkMRMLTransformNode()
-#         self.transform_node.SetName(transform_name)
-#         slicer.mrmlScene.AddNode(self.transform_node)
-#         self.transform_nodeID = self.transform_node.GetID()
-#         self.mesh_model_node.SetAndObserveTransformNodeID(self.transform_nodeID)
-
-
 # noinspection PyAttributeOutsideInit,PyMethodMayBeStatic
 class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     """Uses ScriptedLoadableModuleWidget base class, available at:
@@ -193,7 +174,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.toolMeshModel = sh.SlicerMeshModel(needle_transform_name, self.needle_filename)
         print(self.toolMeshModel)
         self.toolMeshModel.display_node.SetSliceIntersectionVisibility(True)
-        self.toolMeshModel.display_node.SetSliceDisplayModeToProjection()
+        self.toolMeshModel.display_node.SetSliceDisplayModeToIntersection()
+        self.toolMeshModel.display_node.SetColor((255.0/255.0, 170.0/255.0, 0.0))  # Orange
 
         self.toolModelSelector = slicer.qMRMLNodeComboBox()
         self.toolModelSelector.nodeTypes = ["vtkMRMLModelNode"]
@@ -228,6 +210,24 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
                                          self.EntryMarkupModifiedCallback)
         self.targetMarkupNode.SetNthFiducialPosition(0, 0, 0, 0)
         self.EntryMarkupNode.SetNthFiducialPosition(0, 100, 100, 100)
+
+        self.downAxisBool = False
+        # down-axis trajectory markup node
+        self.num_DAT_screens = 1
+        self.DATrajectoryMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
+        self.DATrajectoryMarkupNode.SetName('Trajectory')
+        self.DATrajectoryFiducialIDs = []
+        for i in range(self.num_DAT_screens):
+            slicer.modules.markups.logic().AddFiducial()  # TODO: Multiple screens handled by different 'n's
+            self.DATrajectoryMarkupNode.SetNthFiducialLabel(i, "Trajectory")
+            # each markup is given a unique id which can be accessed from the superclass level
+            self.DATrajectoryFiducialIDs.append(self.DATrajectoryMarkupNode.GetNthMarkupID(n))
+            self.DATrajectoryMarkupNode.SetNthFiducialVisibility(i, False)
+
+        redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
+        print('test')
+        redSliceNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.downAxisPointCallback)
+
 
         """Add Test Data Button"""
         self.addTestDataButton = qt.QPushButton("Add Test Data")
@@ -363,6 +363,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         threeDWidget = layoutManager.threeDWidget(0)
         threeDView = threeDWidget.threeDView()
         threeDView.resetFocalPoint()
+        self.downAxisBool = True
 
     def onAlignAxesToASCButton(self):
         logic = InjectionTrajectoryPlannerLogic()
@@ -373,6 +374,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         threeDWidget = layoutManager.threeDWidget(0)
         threeDView = threeDWidget.threeDView()
         threeDView.resetFocalPoint()
+        self.downAxisBool = False
 
     # noinspection PyUnusedLocal
     def TargetMarkupModifiedCallback(self, caller, event):
@@ -427,6 +429,29 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         robot_ee_entry_transform = np.matmul(np.linalg.inv(hand_eye_transform), entry_transform)
         sh.updateTransformMatrixFromArray(self.robot_ee_entry, robot_ee_entry_transform)
 
+    # TODO: Make not just read slice node but many screens
+    def downAxisPointCallback(self, caller, event):
+        if self.downAxisBool:
+            p_target = np.array([0.0, 0.0, 0.0])
+            p_Entry = np.array([0.0, 0.0, 0.0])
+            self.targetMarkupNode.GetNthFiducialPosition(0, p_target)
+            self.EntryMarkupNode.GetNthFiducialPosition(0, p_Entry)
+            traj = (p_target-p_Entry)
+            unit_traj = traj/np.linalg.norm(traj)
+            redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
+            redSliceViewPoint = sh.arrayFromVTKMatrix(redSliceNode.GetSliceToRAS())[0:3, 3]
+
+            in_traj = 0 < np.dot((redSliceViewPoint-p_Entry)/np.linalg.norm(traj), unit_traj) < 1
+            if in_traj:
+                self.DATrajectoryMarkupNode.SetNthFiducialPosition(0,
+                                                                   redSliceViewPoint[0],
+                                                                   redSliceViewPoint[1],
+                                                                   redSliceViewPoint[2],)
+                self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, True)
+            else:
+                self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
+        else:
+            self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
 
 #
 # InjectionTrajectoryPlannerLogic
@@ -503,7 +528,7 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
             sliceNode = slicer.app.layoutManager().sliceWidget(name).mrmlSliceNode()
             sliceNode.JumpSlice(pos[0], pos[1], pos[2])
 
-    def alignAxesWithTrajectory(self, targetMarkupNode, EntryMarkupNode0):
+    def alignAxesWithTrajectory(self, targetMarkupNode, EntryMarkupNode):
         import numpy as np
 
         redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
@@ -548,6 +573,12 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
 
         greenSliceNode.UpdateMatrices()
 
+        # # Turn on trajectory manipulation point
+        # for i in range(DATrajectoryMarkupNode.GetNumberOfMarkups()):
+        #     DATrajectoryMarkupNode.SetNthFiducialVisibility(i, True)
+        # # Turn off trajectory manipulation point
+        # for i in range(DATrajectoryMarkupNode.GetNumberOfMarkups()):
+        #     DATrajectoryMarkupNode.SetNthFiducialVisibility(i, False)
 
     def resetAxesToASC(self, targetMarkupNode):
         import numpy as np
@@ -572,6 +603,7 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         greenSliceToRAS.SetElement(0, 3, p_target[0])
         greenSliceToRAS.SetElement(1, 3, p_target[1])
         greenSliceToRAS.SetElement(2, 3, p_target[2])
+
 
 
 # noinspection PyMethodMayBeStatic
