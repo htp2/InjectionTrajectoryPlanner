@@ -204,6 +204,9 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.rulerLineNode.SetSliceProjection(1)
         self.rulerLineNode.SetProjectedColor(0, 1, 1)  # cyan
 
+        self.rulerNode.AddObserver(slicer.vtkMRMLAnnotationRulerNode.ControlPointModifiedEvent,
+                                   self.RulerNodeModifiedCallback)
+
         self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
                                           self.TargetMarkupModifiedCallback)
         self.EntryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
@@ -212,6 +215,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.EntryMarkupNode.SetNthFiducialPosition(0, 100, 100, 100)
 
         self.downAxisBool = False
+        self.lastDATFromSliceChange = False  # TODO: Make this less terrible
         # down-axis trajectory markup node
         self.num_DAT_screens = 1
         self.DATrajectoryMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
@@ -223,9 +227,9 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             # each markup is given a unique id which can be accessed from the superclass level
             self.DATrajectoryFiducialIDs.append(self.DATrajectoryMarkupNode.GetNthMarkupID(n))
             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(i, False)
-
+        self.DATrajectoryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
+                                                self.DATrajectoryMarkupModifiedCallback)
         redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
-        print('test')
         redSliceNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.downAxisPointCallback)
 
 
@@ -393,6 +397,35 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.rulerNode.SetTextScale(0)
         self.UpdateToolModel()
 
+    def RulerNodeModifiedCallback(self, caller, event):
+        if hasattr(self, 'downAxisBool') and self.downAxisBool:
+            logic = InjectionTrajectoryPlannerLogic()
+            logic.alignAxesWithTrajectory(self.DATrajectoryMarkupNode, self.EntryMarkupNode)
+
+    # noinspection PyUnusedLocal
+    def DATrajectoryMarkupModifiedCallback(self, caller, event):
+        if self.downAxisBool:
+            if self.lastDATFromSliceChange:
+                self.lastDATFromSliceChange = False
+            else:
+                DA_pos = np.array([0.0, 0.0, 0.0])
+                entry_pos = np.array([0.0, 0.0, 0.0])
+                target_pos = np.array([0.0, 0.0, 0.0])
+                self.DATrajectoryMarkupNode.GetNthFiducialPosition(0, DA_pos)
+                self.EntryMarkupNode.GetNthFiducialPosition(0, entry_pos)
+                self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
+
+                old_traj = (target_pos - entry_pos)
+                norm_old_traj = np.linalg.norm(old_traj)
+                new_reference = DA_pos - target_pos
+                norm_new_reference = np.linalg.norm(new_reference)
+                new_traj = new_reference / norm_new_reference * norm_old_traj
+                new_entry_pos = target_pos + new_traj
+                self.EntryMarkupNode.SetNthFiducialPosition(0,
+                                                            new_entry_pos[0],
+                                                            new_entry_pos[1],
+                                                            new_entry_pos[2])
+
     def UpdateToolModel(self):
         transform = np.eye(4)
         target_pos = np.array([0.0, 0.0, 0.0])
@@ -443,6 +476,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
             in_traj = 0 < np.dot((redSliceViewPoint-p_Entry)/np.linalg.norm(traj), unit_traj) < 1
             if in_traj:
+                self.lastDATFromSliceChange = True
                 self.DATrajectoryMarkupNode.SetNthFiducialPosition(0,
                                                                    redSliceViewPoint[0],
                                                                    redSliceViewPoint[1],
@@ -554,9 +588,9 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         swap_yellow.SetElement(1, 2, 1)
         swap_yellow.SetElement(2, 2, 0)
         vtk.vtkMatrix4x4().Multiply4x4(redSliceToRAS, swap_yellow, yellowSliceToRAS)
-        yellowSliceToRAS.SetElement(0, 3, p_target[0])
-        yellowSliceToRAS.SetElement(1, 3, p_target[1])
-        yellowSliceToRAS.SetElement(2, 3, p_target[2])
+        # yellowSliceToRAS.SetElement(0, 3, p_target[0])
+        # yellowSliceToRAS.SetElement(1, 3, p_target[1])
+        # yellowSliceToRAS.SetElement(2, 3, p_target[2])
         yellowSliceNode.UpdateMatrices()
 
         swap_green = vtk.vtkMatrix4x4()
@@ -567,9 +601,9 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         swap_green.SetElement(0, 2, -1)
         swap_green.SetElement(2, 2, 0)
         vtk.vtkMatrix4x4().Multiply4x4(redSliceToRAS, swap_green, greenSliceToRAS)
-        greenSliceToRAS.SetElement(0, 3, p_target[0])
-        greenSliceToRAS.SetElement(1, 3, p_target[1])
-        greenSliceToRAS.SetElement(2, 3, p_target[2])
+        # greenSliceToRAS.SetElement(0, 3, p_target[0])
+        # greenSliceToRAS.SetElement(1, 3, p_target[1])
+        # greenSliceToRAS.SetElement(2, 3, p_target[2])
 
         greenSliceNode.UpdateMatrices()
 
@@ -591,18 +625,18 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         p_target = np.array([0.0, 0.0, 0.0])
         targetMarkupNode.GetNthFiducialPosition(0, p_target)
 
-        redSliceToRAS = redSliceNode.GetSliceToRAS()
-        redSliceToRAS.SetElement(0, 3, p_target[0])
-        redSliceToRAS.SetElement(1, 3, p_target[1])
-        redSliceToRAS.SetElement(2, 3, p_target[2])
-        yellowSliceToRAS = yellowSliceNode.GetSliceToRAS()
-        yellowSliceToRAS.SetElement(0, 3, p_target[0])
-        yellowSliceToRAS.SetElement(1, 3, p_target[1])
-        yellowSliceToRAS.SetElement(2, 3, p_target[2])
-        greenSliceToRAS = greenSliceNode.GetSliceToRAS()
-        greenSliceToRAS.SetElement(0, 3, p_target[0])
-        greenSliceToRAS.SetElement(1, 3, p_target[1])
-        greenSliceToRAS.SetElement(2, 3, p_target[2])
+        # redSliceToRAS = redSliceNode.GetSliceToRAS()
+        # redSliceToRAS.SetElement(0, 3, p_target[0])
+        # redSliceToRAS.SetElement(1, 3, p_target[1])
+        # redSliceToRAS.SetElement(2, 3, p_target[2])
+        # yellowSliceToRAS = yellowSliceNode.GetSliceToRAS()
+        # yellowSliceToRAS.SetElement(0, 3, p_target[0])
+        # yellowSliceToRAS.SetElement(1, 3, p_target[1])
+        # yellowSliceToRAS.SetElement(2, 3, p_target[2])
+        # greenSliceToRAS = greenSliceNode.GetSliceToRAS()
+        # greenSliceToRAS.SetElement(0, 3, p_target[0])
+        # greenSliceToRAS.SetElement(1, 3, p_target[1])
+        # greenSliceToRAS.SetElement(2, 3, p_target[2])
 
 
 
