@@ -89,6 +89,10 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         #
         # Parameters Area
         #
+        self.logic = InjectionTrajectoryPlannerLogic()
+        self.redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
+        self.lastRedSliceOffset = self.redSliceNode.GetSliceOffset()
+
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
         parametersCollapsibleButton.text = "Parameters"
         self.layout.addWidget(parametersCollapsibleButton)
@@ -131,12 +135,12 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         parametersFormLayout.addRow("Target Marker: ", self.targetSelector)
 
         """Entry Point Markup & Selector"""
-        self.EntryMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-        self.EntryMarkupNode.SetName('Entry')
+        self.entryMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
+        self.entryMarkupNode.SetName('Entry')
         n = slicer.modules.markups.logic().AddFiducial()
-        self.EntryMarkupNode.SetNthFiducialLabel(n, "Entry")
+        self.entryMarkupNode.SetNthFiducialLabel(n, "Entry")
         # each markup is given a unique id which can be accessed from the superclass level
-        self.EntryFiducialID = self.EntryMarkupNode.GetNthMarkupID(n)
+        self.EntryFiducialID = self.entryMarkupNode.GetNthMarkupID(n)
 
         self.entrySelector = slicer.qMRMLNodeComboBox()
         self.entrySelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
@@ -148,7 +152,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.entrySelector.showChildNodeTypes = False
         self.entrySelector.setMRMLScene(slicer.mrmlScene)
         self.entrySelector.setToolTip("Pick the trajectory Entry marker")
-        self.entrySelector.setCurrentNode(self.EntryMarkupNode)
+        self.entrySelector.setCurrentNode(self.entryMarkupNode)
         parametersFormLayout.addRow("Path Entry Marker: ", self.entrySelector)
 
         """Tool Model Markup & Selector"""
@@ -190,32 +194,30 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.toolModelSelector.setCurrentNode(self.toolMeshModel.mesh_model_node)
         parametersFormLayout.addRow("Tool Model: ", self.toolModelSelector)
 
-        """Trajectory Line (Ruler)"""
-        self.rulerNode = slicer.vtkMRMLAnnotationRulerNode()
-        self.rulerNode.SetLocked(1)
-        self.rulerNode.Initialize(slicer.mrmlScene)
-        # self.rulerNode.SetTextScale(0)
-        self.rulerNode.SetName('Trajectory')
-
-        self.rulerTextNode = self.rulerNode.GetAnnotationTextDisplayNode()
-        self.rulerTextNode.SetVisibility(0)
-        self.rulerLineNode = self.rulerNode.GetAnnotationLineDisplayNode()
-        self.rulerLineNode.SetMaxTicks(0)
-        self.rulerLineNode.SetSliceProjection(1)
-        self.rulerLineNode.SetProjectedColor(0, 1, 1)  # cyan
-
-        self.rulerNode.AddObserver(slicer.vtkMRMLAnnotationRulerNode.ControlPointModifiedEvent,
-                                   self.RulerNodeModifiedCallback)
+        """Trajectory Line"""
+        # Call UpdateSphere whenever the fiducials are changed
+        self.line = vtk.vtkLineSource()
+        modelsLogic = slicer.modules.models.logic()
+        self.lineModelNode = modelsLogic.AddModel(self.line.GetOutput())
+        self.lineModelNode.GetDisplayNode().SetSliceIntersectionVisibility(True)
+        self.lineModelNode.GetDisplayNode().SetSliceIntersectionThickness(3)
+        self.lineModelNode.GetDisplayNode().SetColor(0, 1, 1)
 
         self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
-                                          self.TargetMarkupModifiedCallback)
-        self.EntryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
-                                         self.EntryMarkupModifiedCallback)
+                                          self.targetMarkupModifiedCallback)
+        self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
+                                         self.entryMarkupModifiedCallback)
+
+        self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
+                                          self.targetMarkupEndInteractionCallback)
+        self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
+                                          self.entryMarkupEndInteractionCallback)
         self.targetMarkupNode.SetNthFiducialPosition(0, 0, 0, 0)
-        self.EntryMarkupNode.SetNthFiducialPosition(0, 100, 100, 100)
+        self.entryMarkupNode.SetNthFiducialPosition(0, 100, 100, 100)
+
 
         self.downAxisBool = False
-        self.lastDATFromSliceChange = False  # TODO: Make this less terrible
+        self.lastDATFromProjection = False  # TODO: Make this less terrible
         # down-axis trajectory markup node
         self.num_DAT_screens = 1
         self.DATrajectoryMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
@@ -227,10 +229,11 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             # each markup is given a unique id which can be accessed from the superclass level
             self.DATrajectoryFiducialIDs.append(self.DATrajectoryMarkupNode.GetNthMarkupID(n))
             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(i, False)
-        self.DATrajectoryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
-                                                self.DATrajectoryMarkupModifiedCallback)
-        redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
-        redSliceNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.downAxisPointCallback)
+        # self.DATrajectoryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
+        #                                         self.downAxisPointCallback)
+        self.redSliceNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.redSliceModifiedCallback)
+        self.DATrajectoryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
+                                                self.DATPointEndInteractionCallback)
 
 
         """Add Test Data Button"""
@@ -348,7 +351,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     def onMoveEntryToIntersectionButton(self):
         logic = InjectionTrajectoryPlannerLogic()
-        logic.moveEntryToIntersectionButton(self.EntryMarkupNode)
+        logic.moveEntryToIntersectionButton(self.entryMarkupNode)
 
     def onJumpToTargetButton(self):
         logic = InjectionTrajectoryPlannerLogic()
@@ -356,11 +359,11 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     def onJumpToEntryButton(self):
         logic = InjectionTrajectoryPlannerLogic()
-        logic.jumpToMarkup(self.EntryMarkupNode)
+        logic.jumpToMarkup(self.entryMarkupNode)
 
     def onAlignAxesToTrajectoryButton(self):
         logic = InjectionTrajectoryPlannerLogic()
-        logic.alignAxesWithTrajectory(self.targetMarkupNode, self.EntryMarkupNode)
+        logic.alignAxesWithTrajectory(self.targetMarkupNode, self.entryMarkupNode)
         self.onJumpToTargetButton()  # return crosshair to target point
 
         layoutManager = slicer.app.layoutManager()
@@ -378,60 +381,120 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         threeDWidget = layoutManager.threeDWidget(0)
         threeDView = threeDWidget.threeDView()
         threeDView.resetFocalPoint()
+        if hasattr(self, 'downAxisBool') and self.downAxisBool:
+            self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
         self.downAxisBool = False
 
-    # noinspection PyUnusedLocal
-    def TargetMarkupModifiedCallback(self, caller, event):
-        pos = [0.0, 0.0, 0.0]
-        self.targetMarkupNode.GetNthFiducialPosition(0, pos)
-        self.rulerNode.SetPosition1(pos)
-        # self.targetTMarkupNode.SetNthFiducialPosition(0,
-        self.rulerNode.SetTextScale(0)
+    def targetMarkupModifiedCallback(self, caller, event):
+        pos1 = [0.0, 0.0, 0.0]
+        self.targetMarkupNode.GetNthFiducialPosition(0, pos1)
+        self.line.SetPoint1(pos1)
+        self.line.Update()
         self.UpdateToolModel()
 
-    # noinspection PyUnusedLocal
-    def EntryMarkupModifiedCallback(self, caller, event):
-        pos = [0.0, 0.0, 0.0]
-        self.EntryMarkupNode.GetNthFiducialPosition(0, pos)
-        self.rulerNode.SetPosition2(pos)
-        self.rulerNode.SetTextScale(0)
+    def entryMarkupModifiedCallback(self, caller, event):
+        pos2 = [0.0, 0.0, 0.0]
+        self.entryMarkupNode.GetNthFiducialPosition(0, pos2)
+        self.line.SetPoint2(pos2)
+        self.line.Update()
         self.UpdateToolModel()
 
-    def RulerNodeModifiedCallback(self, caller, event):
+    def targetMarkupEndInteractionCallback(self, caller, event):
         if hasattr(self, 'downAxisBool') and self.downAxisBool:
-            logic = InjectionTrajectoryPlannerLogic()
-            logic.alignAxesWithTrajectory(self.DATrajectoryMarkupNode, self.EntryMarkupNode)
+            DAT_pos = np.array([0.0, 0.0, 0.0])
+            entry_pos = np.array([0.0, 0.0, 0.0])
+            target_pos = np.array([0.0, 0.0, 0.0])
+            self.DATrajectoryMarkupNode.GetNthFiducialPosition(0, DAT_pos)
+            self.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
+            self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
 
-    # noinspection PyUnusedLocal
-    def DATrajectoryMarkupModifiedCallback(self, caller, event):
-        if self.downAxisBool:
-            if self.lastDATFromSliceChange:
-                self.lastDATFromSliceChange = False
+            old_entry_to_DAT = (DAT_pos - entry_pos)
+            norm_old_entry_to_DAT = np.linalg.norm(old_entry_to_DAT)
+            new_traj = target_pos - entry_pos
+            norm_new_traj = np.linalg.norm(new_traj)
+            new_entry_to_DAT = new_traj / norm_new_traj * norm_old_entry_to_DAT
+            new_DAT_pos = entry_pos + new_entry_to_DAT
+            self.DATrajectoryMarkupNode.SetNthFiducialPosition(
+                0, new_DAT_pos[0], new_DAT_pos[1], new_DAT_pos[2])
+            self.logic.alignAxesWithTrajectory(self.DATrajectoryMarkupNode, self.entryMarkupNode)
+
+    def entryMarkupEndInteractionCallback(self, caller, event):
+        if hasattr(self, 'downAxisBool') and self.downAxisBool:
+            DAT_pos = np.array([0.0, 0.0, 0.0])
+            entry_pos = np.array([0.0, 0.0, 0.0])
+            target_pos = np.array([0.0, 0.0, 0.0])
+            self.DATrajectoryMarkupNode.GetNthFiducialPosition(0, DAT_pos)
+            self.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
+            self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
+
+            old_target_to_DAT = (DAT_pos - target_pos)
+            norm_old_target_to_DAT = np.linalg.norm(old_target_to_DAT)
+            new_traj = entry_pos - target_pos
+            norm_new_traj = np.linalg.norm(new_traj)
+            new_target_to_DAT = new_traj / norm_new_traj * norm_old_target_to_DAT
+            new_DAT_pos = target_pos + new_target_to_DAT
+            self.DATrajectoryMarkupNode.SetNthFiducialPosition(
+                0, new_DAT_pos[0], new_DAT_pos[1], new_DAT_pos[2])
+            self.logic.alignAxesWithTrajectory(self.DATrajectoryMarkupNode, self.entryMarkupNode)
+
+    def redSliceModifiedCallback(self, caller, event):
+        if hasattr(self, 'downAxisBool') and self.downAxisBool and \
+                self.redSliceNode.GetSliceOffset() is not self.lastRedSliceOffset:
+            # Last one checks to see if slice level actually changed
+            p_target = np.array([0.0, 0.0, 0.0])
+            p_Entry = np.array([0.0, 0.0, 0.0])
+            self.targetMarkupNode.GetNthFiducialPosition(0, p_target)
+            self.entryMarkupNode.GetNthFiducialPosition(0, p_Entry)
+            traj = (p_target-p_Entry)
+            unit_traj = traj/np.linalg.norm(traj)
+            redSliceViewPoint = sh.arrayFromVTKMatrix(self.redSliceNode.GetSliceToRAS())[0:3, 3]
+
+            in_traj = 0 < np.dot((redSliceViewPoint-p_Entry)/np.linalg.norm(traj), unit_traj) < 1
+            if in_traj:
+                self.lastDATFromProjection = True
+                self.DATrajectoryMarkupNode.SetNthFiducialPosition(0,
+                                                                   redSliceViewPoint[0],
+                                                                   redSliceViewPoint[1],
+                                                                   redSliceViewPoint[2],)
+                self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, True)
             else:
-                DA_pos = np.array([0.0, 0.0, 0.0])
-                entry_pos = np.array([0.0, 0.0, 0.0])
-                target_pos = np.array([0.0, 0.0, 0.0])
-                self.DATrajectoryMarkupNode.GetNthFiducialPosition(0, DA_pos)
-                self.EntryMarkupNode.GetNthFiducialPosition(0, entry_pos)
-                self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
+                self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
+        else:
+            self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
+        self.lastRedSliceOffset = self.redSliceNode.GetSliceOffset()
 
-                old_traj = (target_pos - entry_pos)
-                norm_old_traj = np.linalg.norm(old_traj)
-                new_reference = DA_pos - target_pos
-                norm_new_reference = np.linalg.norm(new_reference)
-                new_traj = new_reference / norm_new_reference * norm_old_traj
-                new_entry_pos = target_pos + new_traj
-                self.EntryMarkupNode.SetNthFiducialPosition(0,
-                                                            new_entry_pos[0],
-                                                            new_entry_pos[1],
-                                                            new_entry_pos[2])
+    # TODO: Make not just read slice node but many screens
+    def DATPointEndInteractionCallback(self, caller, event):
+        if hasattr(self, 'downAxisBool') and self.downAxisBool:
+            DA_pos = np.array([0.0, 0.0, 0.0])
+            entry_pos = np.array([0.0, 0.0, 0.0])
+            target_pos = np.array([0.0, 0.0, 0.0])
+            self.DATrajectoryMarkupNode.GetNthFiducialPosition(0, DA_pos)
+            self.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
+            self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
+
+            old_traj = (target_pos - entry_pos)
+            norm_old_traj = np.linalg.norm(old_traj)
+            new_reference = DA_pos - target_pos
+            norm_new_reference = np.linalg.norm(new_reference)
+            new_traj = new_reference / norm_new_reference * norm_old_traj
+            new_entry_pos = target_pos + new_traj
+            self.entryMarkupNode.SetNthFiducialPosition(0,
+                                                        new_entry_pos[0],
+                                                        new_entry_pos[1],
+                                                        new_entry_pos[2])
+            self.logic.alignAxesWithTrajectory(self.DATrajectoryMarkupNode, self.entryMarkupNode)
+    # # noinspection PyUnusedLocal
+    # def DATrajectoryMarkupModifiedCallback(self, caller, event):
+    #     if self.downAxisBool:
+
 
     def UpdateToolModel(self):
         transform = np.eye(4)
         target_pos = np.array([0.0, 0.0, 0.0])
         entry_pos = np.array([0.0, 0.0, 0.0])
         self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
-        self.EntryMarkupNode.GetNthFiducialPosition(0, entry_pos)
+        self.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
         traj_vec = target_pos - entry_pos
         z_vec = traj_vec
         x_vec = np.array([-z_vec[1], z_vec[0], 0])
@@ -462,30 +525,29 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         robot_ee_entry_transform = np.matmul(np.linalg.inv(hand_eye_transform), entry_transform)
         sh.updateTransformMatrixFromArray(self.robot_ee_entry, robot_ee_entry_transform)
 
-    # TODO: Make not just read slice node but many screens
-    def downAxisPointCallback(self, caller, event):
-        if self.downAxisBool:
-            p_target = np.array([0.0, 0.0, 0.0])
-            p_Entry = np.array([0.0, 0.0, 0.0])
-            self.targetMarkupNode.GetNthFiducialPosition(0, p_target)
-            self.EntryMarkupNode.GetNthFiducialPosition(0, p_Entry)
-            traj = (p_target-p_Entry)
-            unit_traj = traj/np.linalg.norm(traj)
-            redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
-            redSliceViewPoint = sh.arrayFromVTKMatrix(redSliceNode.GetSliceToRAS())[0:3, 3]
-
-            in_traj = 0 < np.dot((redSliceViewPoint-p_Entry)/np.linalg.norm(traj), unit_traj) < 1
-            if in_traj:
-                self.lastDATFromSliceChange = True
-                self.DATrajectoryMarkupNode.SetNthFiducialPosition(0,
-                                                                   redSliceViewPoint[0],
-                                                                   redSliceViewPoint[1],
-                                                                   redSliceViewPoint[2],)
-                self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, True)
-            else:
-                self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
-        else:
-            self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
+    # def projectCurrentTrajPoint(self):
+    #     if hasattr(self, 'downAxisBool') and self.downAxisBool:
+    #         p_target = np.array([0.0, 0.0, 0.0])
+    #         p_Entry = np.array([0.0, 0.0, 0.0])
+    #         self.targetMarkupNode.GetNthFiducialPosition(0, p_target)
+    #         self.EntryMarkupNode.GetNthFiducialPosition(0, p_Entry)
+    #         traj = (p_target-p_Entry)
+    #         unit_traj = traj/np.linalg.norm(traj)
+    #         redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
+    #         redSliceViewPoint = sh.arrayFromVTKMatrix(redSliceNode.GetSliceToRAS())[0:3, 3]
+    #
+    #         in_traj = 0 < np.dot((redSliceViewPoint-p_Entry)/np.linalg.norm(traj), unit_traj) < 1
+    #         if in_traj:
+    #             self.lastDATFromProjection = True
+    #             self.DATrajectoryMarkupNode.SetNthFiducialPosition(0,
+    #                                                                redSliceViewPoint[0],
+    #                                                                redSliceViewPoint[1],
+    #                                                                redSliceViewPoint[2],)
+    #             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, True)
+    #         else:
+    #             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
+    #     else:
+    #         self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
 
 #
 # InjectionTrajectoryPlannerLogic
@@ -637,7 +699,6 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         # greenSliceToRAS.SetElement(0, 3, p_target[0])
         # greenSliceToRAS.SetElement(1, 3, p_target[1])
         # greenSliceToRAS.SetElement(2, 3, p_target[2])
-
 
 
 # noinspection PyMethodMayBeStatic
