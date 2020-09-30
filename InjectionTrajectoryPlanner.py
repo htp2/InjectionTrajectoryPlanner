@@ -92,18 +92,31 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.logic = InjectionTrajectoryPlannerLogic()
         self.redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
         self.lastRedSliceOffset = self.redSliceNode.GetSliceOffset()
+        self.trajNum = 1
 
-        parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-        parametersCollapsibleButton.text = "Parameters"
-        self.layout.addWidget(parametersCollapsibleButton)
+        actionsCollapsibleButton = ctk.ctkCollapsibleButton()
+        actionsCollapsibleButton.text = "Actions"
+        self.layout.addWidget(actionsCollapsibleButton)
+        actionsFormLayout = qt.QFormLayout(actionsCollapsibleButton)
 
-        # Layout within the dummy collapsible button
-        parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
+        vizCollapsibleButton = ctk.ctkCollapsibleButton()
+        vizCollapsibleButton.text = "Visualization"
+        self.layout.addWidget(vizCollapsibleButton)
+        vizFormLayout = qt.QFormLayout(vizCollapsibleButton)
 
         slicevizCollapsibleButton = ctk.ctkCollapsibleButton()
         slicevizCollapsibleButton.text = "Toggle Slice Display in 3D View"
         self.layout.addWidget(slicevizCollapsibleButton)
         slicevizFormLayout = qt.QFormLayout(slicevizCollapsibleButton)
+
+
+        parametersCollapsibleButton = ctk.ctkCollapsibleButton()
+        parametersCollapsibleButton.text = "Parameters"
+        self.layout.addWidget(parametersCollapsibleButton)
+        parametersCollapsibleButton.setChecked(False)  # closes by default
+        parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
+
+
 
         #
         # input volume selector
@@ -264,44 +277,120 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.toggleSliceVisibilityButtonLayout.addWidget(self.toggleGreenSliceVisibilityButton)
         slicevizFormLayout.addRow(self.toggleSliceVisibilityButtonLayout)
 
+        """Instruction Text"""
+        x = qt.QLabel()
+        x.setText("Helpful Controls:\n"
+                  " - Hold SHIFT while hovering mouse to change slice intersection\n"
+                  " - Right click and drag for zoom\n"
+                  " - Left click and drag for image settings\n"
+                  " - Click and drag points to move\n"
+                  " - Mouse scroll between slices\n")
+        x.setWordWrap(True)
+
+        actionsFormLayout.addRow(x)
+        """Save Trajectory Button"""
+        self.saveTrajectoryButton = qt.QPushButton("Save Trajectory 1")
+        saveIcon = qt.QIcon(self.dir+'/Resources/Icons/save.png')
+        self.saveTrajectoryButton.setIcon(saveIcon)
+        self.saveTrajectoryButton.setIconSize(qt.QSize(50,50))
+        actionsFormLayout.addRow(self.saveTrajectoryButton)
+
+        """Set Point Layout"""
+        self.movePointsButtonLayout = qt.QHBoxLayout()
+        self.movePointsLabelsLayout = qt.QHBoxLayout()
         """Set Target Point Button"""
-        self.moveTargetToIntersectionButton = qt.QPushButton("SET Target Point to Slice Intersection")
+        self.moveTargetToIntersectionButton = qt.QPushButton("CHANGE Target Point")
         self.moveTargetToIntersectionButton.toolTip = "Align slice intersections (hover while pressing shift may " \
                                                       "help). Click button to move target point here"
         self.moveTargetToIntersectionButton.enabled = True
-        parametersFormLayout.addRow(self.moveTargetToIntersectionButton)
+        setTargetIcon = qt.QIcon(self.dir+'/Resources/Icons/setTarget.png')
+        self.moveTargetToIntersectionButton.setIcon(setTargetIcon)
+        self.moveTargetToIntersectionButton.setIconSize(qt.QSize(50,50))
+        self.movePointsButtonLayout.addWidget(self.moveTargetToIntersectionButton)
+
 
         """Set Entry Point Button"""
-        self.moveEntryToIntersectionButton = qt.QPushButton("SET Entry Point to Slice Intersection")
+        self.moveEntryToIntersectionButton = qt.QPushButton("CHANGE Entry Point")
         self.moveEntryToIntersectionButton.toolTip = "Align slice intersections (hover while pressing shift may " \
                                                      "help). Click button to move target point here"
         self.moveEntryToIntersectionButton.enabled = True
-        parametersFormLayout.addRow(self.moveEntryToIntersectionButton)
+        setEntryIcon = qt.QIcon(self.dir+'/Resources/Icons/setEntry.png')
+        self.moveEntryToIntersectionButton.setIcon(setEntryIcon)
+        self.moveEntryToIntersectionButton.setIconSize(qt.QSize(50,50))
+        x = qt.QLabel()
+        x.setWordWrap(True)
+        x.setText("Buttons below change the Target/Entry Point to the current slice intersection point. Hold SHIFT while hovering mouse to change slice itersection")
+        self.movePointsLabelsLayout.addWidget(x)
+        self.movePointsButtonLayout.addWidget(self.moveEntryToIntersectionButton)
+
+        actionsFormLayout.addRow(self.movePointsLabelsLayout)
+        actionsFormLayout.addRow(self.movePointsButtonLayout)
+
+        self.jumpVizLabelsLayout = qt.QHBoxLayout()
+        self.jumpVizButtonsLayout = qt.QHBoxLayout()
+
+        x = qt.QLabel()
+        x.setWordWrap(True)
+        x.setText("Buttons below switch view to center on Target/Entry Point:")
+        self.jumpVizLabelsLayout.addWidget(x)
 
         """Jump To Target Point Button"""
         self.jumpToTargetButton = qt.QPushButton("View Target Point")
         self.jumpToTargetButton.toolTip = "Press to see the target point in all slices"
-        parametersFormLayout.addRow(self.jumpToTargetButton)
+        moveToTargetIcon = qt.QIcon(self.dir+'/Resources/Icons/moveToTarget.png')
+        self.jumpToTargetButton.setIcon(moveToTargetIcon)
+        self.jumpToTargetButton.setIconSize(qt.QSize(50,50))
+        self.jumpVizButtonsLayout.addWidget(self.jumpToTargetButton)
 
         """Jump To Entry Point Button"""
         self.jumpToEntryButton = qt.QPushButton("View Entry Point")
         self.jumpToEntryButton.toolTip = "Press to see the Entry point in all slices"
-        parametersFormLayout.addRow(self.jumpToEntryButton)
+        moveToEntryIcon = qt.QIcon(self.dir+'/Resources/Icons/moveToEntry.png')
+        self.jumpToEntryButton.setIcon(moveToEntryIcon)
+        self.jumpToEntryButton.setIconSize(qt.QSize(50,50))
+        self.jumpVizButtonsLayout.addWidget(self.jumpToEntryButton)
+
+        vizFormLayout.addRow(self.jumpVizLabelsLayout)
+        vizFormLayout.addRow(self.jumpVizButtonsLayout)
+
+
+
+        self.sliceVizLabelsLayout = qt.QHBoxLayout()
+        self.sliceVizButtonsLayout = qt.QHBoxLayout()
+        x = qt.QLabel()
+        x.setWordWrap(True)
+        x.setText("Buttons below change Slice Views:")
+        self.sliceVizLabelsLayout.addWidget(x)
+
+        """Standard View Button"""
+        self.alignAxesToASCButton = qt.QPushButton("Standard")
+        self.alignAxesToASCButton.toolTip = "Returns to default axial, sagittal, coronal slice views"
+
+        standardViewIcon = qt.QIcon(self.dir + '/Resources/Icons/standard.png')
+        self.alignAxesToASCButton.setIcon(standardViewIcon)
+        self.alignAxesToASCButton.setIconSize(qt.QSize(50, 50))
+        self.sliceVizButtonsLayout.addWidget(self.alignAxesToASCButton)
 
         """Look Down Trajectory Button"""
-        self.alignAxesToTrajectoryButton = qt.QPushButton("Change Slice Views to look down trajectory")
+        self.alignAxesToTrajectoryButton = qt.QPushButton("Down Trajectory")
         self.alignAxesToTrajectoryButton.toolTip = "Axial view switches to down-trajectory view. " \
                                                    "Other planes rotate by same amount to remain orthogonal"
-        parametersFormLayout.addRow(self.alignAxesToTrajectoryButton)
+
+        downTrajIcon = qt.QIcon(self.dir + '/Resources/Icons/downTraj.png')
+        self.alignAxesToTrajectoryButton.setIcon(downTrajIcon)
+        self.alignAxesToTrajectoryButton.setIconSize(qt.QSize(50, 50))
+        self.sliceVizButtonsLayout.addWidget(self.alignAxesToTrajectoryButton)
+
+        vizFormLayout.addRow(self.sliceVizLabelsLayout)
+        vizFormLayout.addRow(self.sliceVizButtonsLayout)
+
         self.crosshairNode = slicer.util.getNode('Crosshair')  # Make sure exists
         self.crosshairPos = self.crosshairNode.SetCrosshairRAS(0, 0, 0)
 
-        """Standard View Button"""
-        self.alignAxesToASCButton = qt.QPushButton("Change Slice Views to standard A-S-C")
-        self.alignAxesToASCButton.toolTip = "Returns to default axial, sagittal, coronal slice views"
-        parametersFormLayout.addRow(self.alignAxesToASCButton)
 
         # connections
+        self.saveTrajectoryButton.connect('clicked(bool)', self.onSaveTrajectoryButton)
+
         self.addTestDataButton.connect('clicked(bool)', self.onAddTestDataButton)
         self.toggleSliceIntersectionButton.connect('clicked(bool)', self.onToggleSliceIntersectionButton)
 
@@ -323,6 +412,14 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     def cleanup(self):
         pass
+
+    def onSaveTrajectoryButton(self):
+        from datetime import datetime
+        filename = self.dir+'/Output/'+datetime.now().strftime('%Y%m%d%H%M%S')+'_traj'+str(self.trajNum)
+        slicer.util.saveScene(filename)
+        print('Trajectory saved to '+ filename)
+        self.trajNum += 1
+        self.saveTrajectoryButton.setText('Save Trajectory '+ str(self.trajNum))
 
     def onAddTestDataButton(self):
         logic = InjectionTrajectoryPlannerLogic()
