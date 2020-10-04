@@ -213,8 +213,10 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         modelsLogic = slicer.modules.models.logic()
         self.lineModelNode = modelsLogic.AddModel(self.line.GetOutput())
         self.lineModelNode.GetDisplayNode().SetSliceIntersectionVisibility(True)
-        self.lineModelNode.GetDisplayNode().SetSliceIntersectionThickness(3)
+	self.lineModelNode.GetDisplayNode().SetSliceIntersectionThickness(3)
+        self.lineModelNode.GetDisplayNode().SetSliceDisplayModeToProjection()
         self.lineModelNode.GetDisplayNode().SetColor(0, 1, 1)
+				
 
         self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
                                           self.targetMarkupModifiedCallback)
@@ -415,9 +417,15 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     def onSaveTrajectoryButton(self):
         from datetime import datetime
-        filename = self.dir+'/Output/'+datetime.now().strftime('%Y%m%d%H%M%S')+'_traj'+str(self.trajNum)
-        slicer.util.saveScene(filename)
-        print('Trajectory saved to '+ filename)
+        outdir = self.dir+'/Output/'+datetime.now().strftime('%Y%m%d%H%M%S')+'_traj'+str(self.trajNum)
+        import os
+	if not os.path.exists(outdir):
+    	    os.makedirs(outdir)
+        slicer.util.saveNode(self.entryMarkupNode, outdir+'/Entry.fcsv')
+        slicer.util.saveNode(self.targetMarkupNode, outdir+'/Target.fcsv')
+        slicer.util.saveNode(self.lineModelNode, outdir+'/line.vtk')
+        slicer.util.saveNode(self.toolMeshModel.transform_node, outdir+'/needle.h5')
+        print('Trajectory saved to '+ outdir)
         self.trajNum += 1
         self.saveTrajectoryButton.setText('Save Trajectory '+ str(self.trajNum))
 
