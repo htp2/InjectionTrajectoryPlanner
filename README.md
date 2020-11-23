@@ -1,5 +1,5 @@
-## InjectionTrajectoryPlanner
-# Written by: Henry Phalen
+# InjectionTrajectoryPlanner
+## Written by: Henry Phalen
 
 Slicer Version 4.10.2
 Slicer can be installed as normal - no need to build from source.
