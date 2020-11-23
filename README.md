@@ -9,4 +9,4 @@ These trajectories are visualized with a line that is projected into the slice i
 
 Additionally, once a trajectory is designated, the slices can be toggled between a typical anatomical view (Coronal, Transverse, Saggital planes) and a 'down-axis' trajectory. This switches the axial view to look straight down the line of injection. This view is dynamic, any changes in the two points will cause the image to reslice. Further, care was given to provide a point on 'down trajectory' slice that allows the trajectory to be moved as if at that point (not just at the edges).
 
-The large size of this file is due to the sample images. These can be removed without detriment (only the 'import sample data') button will obviously not work.
+The sample images / volumes have been removed for storage. As a result, the import test data button will obviously not work. These can easily be replaced with arbitrary images, or you can just load images into Slicer manually.
