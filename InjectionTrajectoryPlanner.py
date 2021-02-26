@@ -9,6 +9,8 @@ import logging
 import os
 from Resources.slicer_helper import slicer_helper as sh
 import numpy as np
+from datetime import datetime
+import os
 
 
 # InjectionTrajectoryPlanner
@@ -93,6 +95,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
         self.lastRedSliceOffset = self.redSliceNode.GetSliceOffset()
         self.trajNum = 1
+        self.trajNumMax = 1  # Need to keep track of this so we can name new trajectories correctly
+
 
         actionsCollapsibleButton = ctk.ctkCollapsibleButton()
         actionsCollapsibleButton.text = "Actions"
@@ -122,51 +126,52 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         # input volume selector
         #
         self.dir = os.path.dirname(__file__)
+        self.outdir = self.dir+'/Output/'+datetime.now().strftime('%Y%m%d%H%M%S')
         self.needle_filename = self.dir + '/Resources/meshes/50mm_18ga_needle.stl'
         self.test_volume_data_filename = self.dir + '/Resources/volumes/test_spine_segmentation.nrrd'
         self.test_ct_directory = self.dir + '/Resources/images/Case1 CT'  # input folder with DICOM files
 
         """Target Point Markup & Selector"""
-        self.targetMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-        self.targetMarkupNode.SetName('Target')
-        n = slicer.modules.markups.logic().AddFiducial()
-        self.targetMarkupNode.SetNthFiducialLabel(n, "Target")
-        # each markup is given a unique id which can be accessed from the superclass level
-        self.targetFiducialID = self.targetMarkupNode.GetNthMarkupID(n)
+        # self.targetMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
+        # self.targetMarkupNode.SetName('Target')
+        # n = slicer.modules.markups.logic().AddFiducial()
+        # self.targetMarkupNode.SetNthFiducialLabel(n, "Target")
+        # # each markup is given a unique id which can be accessed from the superclass level
+        # self.targetFiducialID = self.targetMarkupNode.GetNthMarkupID(n)
 
-        self.targetSelector = slicer.qMRMLNodeComboBox()
-        self.targetSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
-        self.targetSelector.selectNodeUponCreation = True
-        self.targetSelector.addEnabled = True
-        self.targetSelector.removeEnabled = False
-        self.targetSelector.noneEnabled = False
-        self.targetSelector.showHidden = False
-        self.targetSelector.showChildNodeTypes = False
-        self.targetSelector.setMRMLScene(slicer.mrmlScene)
-        self.targetSelector.setToolTip("Pick the target marker")
-        self.targetSelector.setCurrentNode(self.targetMarkupNode)
-        parametersFormLayout.addRow("Target Marker: ", self.targetSelector)
+        # self.targetSelector = slicer.qMRMLNodeComboBox()
+        # self.targetSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
+        # self.targetSelector.selectNodeUponCreation = True
+        # self.targetSelector.addEnabled = True
+        # self.targetSelector.removeEnabled = False
+        # self.targetSelector.noneEnabled = False
+        # self.targetSelector.showHidden = False
+        # self.targetSelector.showChildNodeTypes = False
+        # self.targetSelector.setMRMLScene(slicer.mrmlScene)
+        # self.targetSelector.setToolTip("Pick the target marker")
+        # self.targetSelector.setCurrentNode(self.targetMarkupNode)
+        # parametersFormLayout.addRow("Target Marker: ", self.targetSelector)
 
         """Entry Point Markup & Selector"""
-        self.entryMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-        self.entryMarkupNode.SetName('Entry')
-        n = slicer.modules.markups.logic().AddFiducial()
-        self.entryMarkupNode.SetNthFiducialLabel(n, "Entry")
-        # each markup is given a unique id which can be accessed from the superclass level
-        self.EntryFiducialID = self.entryMarkupNode.GetNthMarkupID(n)
+        # self.entryMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
+        # self.entryMarkupNode.SetName('Entry')
+        # n = slicer.modules.markups.logic().AddFiducial()
+        # self.entryMarkupNode.SetNthFiducialLabel(n, "Entry")
+        # # each markup is given a unique id which can be accessed from the superclass level
+        # self.EntryFiducialID = self.entryMarkupNode.GetNthMarkupID(n)
 
-        self.entrySelector = slicer.qMRMLNodeComboBox()
-        self.entrySelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
-        self.entrySelector.selectNodeUponCreation = True
-        self.entrySelector.addEnabled = True
-        self.entrySelector.removeEnabled = True
-        self.entrySelector.noneEnabled = False
-        self.entrySelector.showHidden = False
-        self.entrySelector.showChildNodeTypes = False
-        self.entrySelector.setMRMLScene(slicer.mrmlScene)
-        self.entrySelector.setToolTip("Pick the trajectory Entry marker")
-        self.entrySelector.setCurrentNode(self.entryMarkupNode)
-        parametersFormLayout.addRow("Path Entry Marker: ", self.entrySelector)
+        # self.entrySelector = slicer.qMRMLNodeComboBox()
+        # self.entrySelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
+        # self.entrySelector.selectNodeUponCreation = True
+        # self.entrySelector.addEnabled = True
+        # self.entrySelector.removeEnabled = True
+        # self.entrySelector.noneEnabled = False
+        # self.entrySelector.showHidden = False
+        # self.entrySelector.showChildNodeTypes = False
+        # self.entrySelector.setMRMLScene(slicer.mrmlScene)
+        # self.entrySelector.setToolTip("Pick the trajectory Entry marker")
+        # self.entrySelector.setCurrentNode(self.entryMarkupNode)
+        # parametersFormLayout.addRow("Path Entry Marker: ", self.entrySelector)
 
         """Tool Model Markup & Selector"""
         self.entry_transform_node = slicer.vtkMRMLTransformNode()
@@ -210,22 +215,21 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
         """Trajectory Line"""
         # Call UpdateSphere whenever the fiducials are changed
-        self.selectedLine = sh.SlicerLineModel(self.trajNum)
+        self.selectedTraj = sh.SlicerTrajectoryModel(self.trajNum)
 
-        self.line_list = [self.selectedLine]
-				
+        self.trajList = np.array([self.selectedTraj])
 
-        self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
-                                          self.targetMarkupModifiedCallback)
-        self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
-                                         self.entryMarkupModifiedCallback)
-
-        self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
-                                          self.targetMarkupEndInteractionCallback)
-        self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
-                                          self.entryMarkupEndInteractionCallback)
-        self.targetMarkupNode.SetNthFiducialPosition(0, 0, 0, 0)
-        self.entryMarkupNode.SetNthFiducialPosition(0, 100, 100, 100)
+        # self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
+        #                                   self.targetMarkupModifiedCallback)
+        # self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
+        #                                  self.entryMarkupModifiedCallback)
+        #
+        # self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
+        #                                   self.targetMarkupEndInteractionCallback)
+        # self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
+        #                                   self.entryMarkupEndInteractionCallback)
+        # self.targetMarkupNode.SetNthFiducialPosition(0, 0, 0, 0)
+        # self.entryMarkupNode.SetNthFiducialPosition(0, 100, 100, 100)
 
 
         self.downAxisBool = False
@@ -239,7 +243,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             slicer.modules.markups.logic().AddFiducial()  # TODO: Multiple screens handled by different 'n's
             self.DATrajectoryMarkupNode.SetNthFiducialLabel(i, "Trajectory")
             # each markup is given a unique id which can be accessed from the superclass level
-            self.DATrajectoryFiducialIDs.append(self.DATrajectoryMarkupNode.GetNthMarkupID(n))
+            self.DATrajectoryFiducialIDs.append(self.DATrajectoryMarkupNode.GetNthMarkupID(i))
             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(i, False)
         # self.DATrajectoryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
         #                                         self.downAxisPointCallback)
@@ -299,13 +303,20 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.trajSelector.showChildNodeTypes = False
         self.trajSelector.setMRMLScene(slicer.mrmlScene)
         self.trajSelector.setToolTip("Select the Trajectory to Plan:")
-        self.trajSelector.setCurrentNode(self.selectedLine.lineModelNode)
+        self.trajSelector.setCurrentNode(self.selectedTraj.lineModelNode)
         self.trajSelector.setNodeTypeLabel('Trajectory',"vtkMRMLModelNode")
         actionsFormLayout.addRow("Select Trajectory: ", self.trajSelector)
 
+        """Add Trajectory Button"""
+        self.addTrajectoryButton = qt.QPushButton("Add Trajectory")
+        actionsFormLayout.addRow(self.addTrajectoryButton)
+
+        """Delete Trajectory Button"""
+        self.deleteTrajectoryButton = qt.QPushButton("Delete Current Trajectory")
+        actionsFormLayout.addRow(self.deleteTrajectoryButton)
 
         """Save Trajectory Button"""
-        self.saveTrajectoryButton = qt.QPushButton("Save Trajectory 1")
+        self.saveTrajectoryButton = qt.QPushButton("Save Trajectory")
         saveIcon = qt.QIcon(self.dir+'/Resources/Icons/save.png')
         self.saveTrajectoryButton.setIcon(saveIcon)
         self.saveTrajectoryButton.setIconSize(qt.QSize(50,50))
@@ -405,6 +416,9 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
 
         # connections
+        self.addTrajectoryButton.connect('clicked(bool)', self.onAddTrajectoryButton)
+        self.deleteTrajectoryButton.connect('clicked(bool)', self.onDeleteTrajectoryButton)
+
         self.saveTrajectoryButton.connect('clicked(bool)', self.onSaveTrajectoryButton)
 
         self.addTestDataButton.connect('clicked(bool)', self.onAddTestDataButton)
@@ -429,19 +443,34 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     def cleanup(self):
         pass
 
+    def onAddTrajectoryButton(self):
+        self.onSaveTrajectoryButton()  # Save the previous one, just to be safe
+        self.onAlignAxesToASCButton()
+        
+        self.trajNumMax += 1
+        self.trajNum = self.trajNumMax
+        self.selectedTraj = sh.SlicerTrajectoryModel(self.trajNum)
+        self.trajList = np.append(self.trajList, self.selectedTraj)
+        self.trajSelector.setCurrentNode(self.selectedTraj.lineModelNode)
+
+    def onDeleteTrajectoryButton(self):
+        i=1
+
+
     def onSaveTrajectoryButton(self):
-        from datetime import datetime
-        outdir = self.dir+'/Output/'+datetime.now().strftime('%Y%m%d%H%M%S')+'_traj'+str(self.trajNum)
-        import os
-	if not os.path.exists(outdir):
-    	    os.makedirs(outdir)
-        slicer.util.saveNode(self.entryMarkupNode, outdir+'/Entry.fcsv')
-        slicer.util.saveNode(self.targetMarkupNode, outdir+'/Target.fcsv')
-        slicer.util.saveNode(self.selectedLine.lineModelNode, outdir+'/line.vtk')
-        slicer.util.saveNode(self.toolMeshModel.transform_node, outdir+'/needle.h5')
-        print('Trajectory saved to '+ outdir)
-        self.trajNum += 1
-        self.saveTrajectoryButton.setText('Save Trajectory '+ str(self.trajNum))
+        if not os.path.exists(self.outdir):
+            os.makedirs(self.outdir)
+
+        for i,traj in enumerate(self.trajList):
+            trajoutdir = self.outdir+'/traj'+str(i+1)
+            if not os.path.exists(trajoutdir):
+                os.makedirs(trajoutdir)
+            slicer.util.saveNode(self.selectedTraj.entryMarkupNode, trajoutdir+'/Entry.fcsv')
+            slicer.util.saveNode(self.selectedTraj.targetMarkupNode, trajoutdir+'/Target.fcsv')
+            slicer.util.saveNode(self.selectedTraj.lineModelNode, trajoutdir + '/line.vtk')
+            slicer.util.saveNode(self.toolMeshModel.transform_node, trajoutdir+'/needle.h5')
+
+        print('Trajectories saved to '+ self.outdir)
 
     def onAddTestDataButton(self):
         logic = InjectionTrajectoryPlannerLogic()
@@ -466,23 +495,23 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     def onMoveTargetToIntersectionButton(self):
         logic = InjectionTrajectoryPlannerLogic()
-        logic.moveTargetToIntersectionButton(self.targetMarkupNode)
+        logic.moveTargetToIntersectionButton(self.selectedTraj.targetMarkupNode)
 
     def onMoveEntryToIntersectionButton(self):
         logic = InjectionTrajectoryPlannerLogic()
-        logic.moveEntryToIntersectionButton(self.entryMarkupNode)
+        logic.moveEntryToIntersectionButton(self.selectedTraj.entryMarkupNode)
 
     def onJumpToTargetButton(self):
         logic = InjectionTrajectoryPlannerLogic()
-        logic.jumpToMarkup(self.targetMarkupNode)
+        logic.jumpToMarkup(self.selectedTraj.targetMarkupNode)
 
     def onJumpToEntryButton(self):
         logic = InjectionTrajectoryPlannerLogic()
-        logic.jumpToMarkup(self.entryMarkupNode)
+        logic.jumpToMarkup(self.selectedTraj.entryMarkupNode)
 
     def onAlignAxesToTrajectoryButton(self):
         logic = InjectionTrajectoryPlannerLogic()
-        logic.alignAxesWithTrajectory(self.targetMarkupNode, self.entryMarkupNode)
+        logic.alignAxesWithTrajectory(self.selectedTraj.targetMarkupNode, self.selectedTraj.entryMarkupNode)
         self.onJumpToTargetButton()  # return crosshair to target point
 
         layoutManager = slicer.app.layoutManager()
@@ -493,7 +522,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     def onAlignAxesToASCButton(self):
         logic = InjectionTrajectoryPlannerLogic()
-        logic.resetAxesToASC(self.targetMarkupNode)
+        logic.resetAxesToASC(self.selectedTraj.targetMarkupNode)
         self.onJumpToTargetButton()  # return crosshair to target point
 
         layoutManager = slicer.app.layoutManager()
@@ -504,19 +533,21 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
         self.downAxisBool = False
 
-    def targetMarkupModifiedCallback(self, caller, event):
-        pos1 = [0.0, 0.0, 0.0]
-        self.targetMarkupNode.GetNthFiducialPosition(0, pos1)
-        self.selectedLine.line.SetPoint1(pos1)
-        self.selectedLine.line.Update()
-        self.UpdateToolModel()
+    # def targetMarkupModifiedCallback(self, caller, event):
+    #     pos1 = [0.0, 0.0, 0.0]
+    #     self.targetMarkupNode.GetNthFiducialPosition(0, pos1)
+    #     self.selectedTraj.line.SetPoint1(pos1)
+    #     self.selectedTraj.line.Update()
+    #     self.UpdateToolModel()
+    #
+    # def entryMarkupModifiedCallback(self, caller, event):
+    #     pos2 = [0.0, 0.0, 0.0]
+    #     self.entryMarkupNode.GetNthFiducialPosition(0, pos2)
+    #     self.selectedTraj.line.SetPoint2(pos2)
+    #     self.selectedTraj.line.Update()
+    #     self.UpdateToolModel()
 
-    def entryMarkupModifiedCallback(self, caller, event):
-        pos2 = [0.0, 0.0, 0.0]
-        self.entryMarkupNode.GetNthFiducialPosition(0, pos2)
-        self.selectedLine.line.SetPoint2(pos2)
-        self.selectedLine.line.Update()
-        self.UpdateToolModel()
+###TODO OBLIQUE VIEWS ARE DAT BUT UPDATES IN RT AND REVERTS WHEN YOU LET GO
 
     def targetMarkupEndInteractionCallback(self, caller, event):
         if hasattr(self, 'downAxisBool') and self.downAxisBool:
@@ -562,8 +593,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             # Last one checks to see if slice level actually changed
             p_target = np.array([0.0, 0.0, 0.0])
             p_Entry = np.array([0.0, 0.0, 0.0])
-            self.targetMarkupNode.GetNthFiducialPosition(0, p_target)
-            self.entryMarkupNode.GetNthFiducialPosition(0, p_Entry)
+            self.selectedTraj.targetMarkupNode.GetNthFiducialPosition(0, p_target)
+            self.selectedTraj.entryMarkupNode.GetNthFiducialPosition(0, p_Entry)
             traj = (p_target-p_Entry)
             unit_traj = traj/np.linalg.norm(traj)
             redSliceViewPoint = sh.arrayFromVTKMatrix(self.redSliceNode.GetSliceToRAS())[0:3, 3]
@@ -589,8 +620,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             entry_pos = np.array([0.0, 0.0, 0.0])
             target_pos = np.array([0.0, 0.0, 0.0])
             self.DATrajectoryMarkupNode.GetNthFiducialPosition(0, DA_pos)
-            self.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
-            self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
+            self.selectedTraj.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
+            self.selectedTraj.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
 
             old_traj = (target_pos - entry_pos)
             norm_old_traj = np.linalg.norm(old_traj)
@@ -598,11 +629,11 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             norm_new_reference = np.linalg.norm(new_reference)
             new_traj = new_reference / norm_new_reference * norm_old_traj
             new_entry_pos = target_pos + new_traj
-            self.entryMarkupNode.SetNthFiducialPosition(0,
+            self.selectedTraj.entryMarkupNode.SetNthFiducialPosition(0,
                                                         new_entry_pos[0],
                                                         new_entry_pos[1],
                                                         new_entry_pos[2])
-            self.logic.alignAxesWithTrajectory(self.DATrajectoryMarkupNode, self.entryMarkupNode)
+            self.logic.alignAxesWithTrajectory(self.DATrajectoryMarkupNode, self.selectedTraj.entryMarkupNode)
     # # noinspection PyUnusedLocal
     # def DATrajectoryMarkupModifiedCallback(self, caller, event):
     #     if self.downAxisBool:
@@ -612,8 +643,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         transform = np.eye(4)
         target_pos = np.array([0.0, 0.0, 0.0])
         entry_pos = np.array([0.0, 0.0, 0.0])
-        self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
-        self.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
+        self.selectedTraj.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
+        self.selectedTraj.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
         traj_vec = target_pos - entry_pos
         z_vec = traj_vec
         x_vec = np.array([-z_vec[1], z_vec[0], 0])

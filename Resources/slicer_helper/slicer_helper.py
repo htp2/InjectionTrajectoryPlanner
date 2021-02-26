@@ -204,10 +204,12 @@ class SlicerVolumeModel:
         self.displayNode.Modified()
 
 
-class SlicerLineModel:
+class SlicerTrajectoryModel:
     """Makes a line object as a vtkMRMLModelNode"""
 
-    def __init__(self, lineNum=0):
+    def __init__(self, trajNum=0):
+        self.hasTool_bool = False  # Future Expansion
+        self.selected_bool = True
         self.line = vtk.vtkLineSource()
         modelsLogic = slicer.modules.models.logic()
         self.lineModelNode = modelsLogic.AddModel(self.line.GetOutput())
@@ -215,8 +217,61 @@ class SlicerLineModel:
         self.lineModelNode.GetDisplayNode().SetSliceIntersectionThickness(3)
         self.lineModelNode.GetDisplayNode().SetSliceDisplayModeToProjection()
         self.lineModelNode.GetDisplayNode().SetColor(0, 1, 1)
-        self.lineModelNode.SetName('Trajectory ' + str(lineNum))
+        self.lineModelNode.SetName('Trajectory ' + str(trajNum))
 
+        self.targetMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
+        self.targetMarkupNode.SetName('Target_' + str(trajNum))
+        n = slicer.modules.markups.logic().AddFiducial()
+        self.targetMarkupNode.SetNthFiducialLabel(n, "Target_" + str((trajNum)))
+        # each markup is given a unique id which can be accessed from the superclass level
+        self.targetFiducialID = self.targetMarkupNode.GetNthMarkupID(n)
+
+        self.entryMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
+        self.entryMarkupNode.SetName('Entry_' + str(trajNum))
+        n = slicer.modules.markups.logic().AddFiducial()
+        self.entryMarkupNode.SetNthFiducialLabel(n, "Entry_" + str(trajNum))
+        # each markup is given a unique id which can be accessed from the superclass level
+        self.EntryFiducialID = self.entryMarkupNode.GetNthMarkupID(n)
+
+
+
+
+        self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
+                                          self.targetMarkupModifiedCallback)
+        self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
+                                         self.entryMarkupModifiedCallback)
+
+        self.targetMarkupNode.SetNthFiducialPosition(0, 0, 0, 0)
+        self.entryMarkupNode.SetNthFiducialPosition(0, 100, 100, 100)
+        # self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
+        #                                   self.targetMarkupEndInteractionCallback)
+        # self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
+        #                                   self.entryMarkupEndInteractionCallback)
+
+    def select(self):
+        self.lineModelNode.GetDisplayNode().SetSliceIntersectionVisibility(True)
+        self.selected_bool = True
+
+    def deselect(self):
+        self.lineModelNode.GetDisplayNode().SetSliceIntersectionVisibility(False)
+        self.selected_bool = False
+
+    def targetMarkupModifiedCallback(self, caller, event):
+        pos1 = [0.0, 0.0, 0.0]
+        self.targetMarkupNode.GetNthFiducialPosition(0, pos1)
+        self.line.SetPoint1(pos1)
+        self.line.Update()
+
+        if self.hasTool_bool:
+            self.UpdateToolModel()
+
+    def entryMarkupModifiedCallback(self, caller, event):
+        pos2 = [0.0, 0.0, 0.0]
+        self.entryMarkupNode.GetNthFiducialPosition(0, pos2)
+        self.line.SetPoint2(pos2)
+        self.line.Update()
+        if self.hasTool_bool:
+            self.UpdateToolModel()
 
 #
 # class SlicerDrillTip:
