@@ -193,6 +193,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.toolMeshModel.display_node.SetSliceIntersectionVisibility(True)
         self.toolMeshModel.display_node.SetSliceDisplayModeToIntersection()
         self.toolMeshModel.display_node.SetColor((255.0/255.0, 170.0/255.0, 0.0))  # Orange
+        self.toolMeshModel.mesh_model_node.SetHideFromEditors(1)
 
         self.toolModelSelector = slicer.qMRMLNodeComboBox()
         self.toolModelSelector.nodeTypes = ["vtkMRMLModelNode"]
@@ -209,13 +210,9 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
         """Trajectory Line"""
         # Call UpdateSphere whenever the fiducials are changed
-        self.line = vtk.vtkLineSource()
-        modelsLogic = slicer.modules.models.logic()
-        self.lineModelNode = modelsLogic.AddModel(self.line.GetOutput())
-        self.lineModelNode.GetDisplayNode().SetSliceIntersectionVisibility(True)
-	self.lineModelNode.GetDisplayNode().SetSliceIntersectionThickness(3)
-        self.lineModelNode.GetDisplayNode().SetSliceDisplayModeToProjection()
-        self.lineModelNode.GetDisplayNode().SetColor(0, 1, 1)
+        self.selectedLine = sh.SlicerLineModel(self.trajNum)
+
+        self.line_list = [self.selectedLine]
 				
 
         self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
@@ -290,6 +287,23 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         x.setWordWrap(True)
 
         actionsFormLayout.addRow(x)
+
+        """Select Trajectory"""
+        self.trajSelector = slicer.qMRMLNodeComboBox()
+        self.trajSelector.nodeTypes = ["vtkMRMLModelNode"]
+        self.trajSelector.selectNodeUponCreation = True
+        self.trajSelector.addEnabled = True
+        self.trajSelector.removeEnabled = True
+        self.trajSelector.noneEnabled = False
+        self.trajSelector.showHidden = False
+        self.trajSelector.showChildNodeTypes = False
+        self.trajSelector.setMRMLScene(slicer.mrmlScene)
+        self.trajSelector.setToolTip("Select the Trajectory to Plan:")
+        self.trajSelector.setCurrentNode(self.selectedLine.lineModelNode)
+        self.trajSelector.setNodeTypeLabel('Trajectory',"vtkMRMLModelNode")
+        actionsFormLayout.addRow("Select Trajectory: ", self.trajSelector)
+
+
         """Save Trajectory Button"""
         self.saveTrajectoryButton = qt.QPushButton("Save Trajectory 1")
         saveIcon = qt.QIcon(self.dir+'/Resources/Icons/save.png')
@@ -423,7 +437,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     	    os.makedirs(outdir)
         slicer.util.saveNode(self.entryMarkupNode, outdir+'/Entry.fcsv')
         slicer.util.saveNode(self.targetMarkupNode, outdir+'/Target.fcsv')
-        slicer.util.saveNode(self.lineModelNode, outdir+'/line.vtk')
+        slicer.util.saveNode(self.selectedLine.lineModelNode, outdir+'/line.vtk')
         slicer.util.saveNode(self.toolMeshModel.transform_node, outdir+'/needle.h5')
         print('Trajectory saved to '+ outdir)
         self.trajNum += 1
@@ -493,15 +507,15 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     def targetMarkupModifiedCallback(self, caller, event):
         pos1 = [0.0, 0.0, 0.0]
         self.targetMarkupNode.GetNthFiducialPosition(0, pos1)
-        self.line.SetPoint1(pos1)
-        self.line.Update()
+        self.selectedLine.line.SetPoint1(pos1)
+        self.selectedLine.line.Update()
         self.UpdateToolModel()
 
     def entryMarkupModifiedCallback(self, caller, event):
         pos2 = [0.0, 0.0, 0.0]
         self.entryMarkupNode.GetNthFiducialPosition(0, pos2)
-        self.line.SetPoint2(pos2)
-        self.line.Update()
+        self.selectedLine.line.SetPoint2(pos2)
+        self.selectedLine.line.Update()
         self.UpdateToolModel()
 
     def targetMarkupEndInteractionCallback(self, caller, event):

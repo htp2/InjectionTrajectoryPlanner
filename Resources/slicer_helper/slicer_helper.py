@@ -202,6 +202,22 @@ class SlicerVolumeModel:
         """ Method to call after changing self.voxel_array so that the visualizations update """
         self.label_volumeNode.Modified()  # Updates the visualizations
         self.displayNode.Modified()
+
+
+class SlicerLineModel:
+    """Makes a line object as a vtkMRMLModelNode"""
+
+    def __init__(self, lineNum=0):
+        self.line = vtk.vtkLineSource()
+        modelsLogic = slicer.modules.models.logic()
+        self.lineModelNode = modelsLogic.AddModel(self.line.GetOutput())
+        self.lineModelNode.GetDisplayNode().SetSliceIntersectionVisibility(True)
+        self.lineModelNode.GetDisplayNode().SetSliceIntersectionThickness(3)
+        self.lineModelNode.GetDisplayNode().SetSliceDisplayModeToProjection()
+        self.lineModelNode.GetDisplayNode().SetColor(0, 1, 1)
+        self.lineModelNode.SetName('Trajectory ' + str(lineNum))
+
+
 #
 # class SlicerDrillTip:
 #     def __init__(self, volume_model, radius):
