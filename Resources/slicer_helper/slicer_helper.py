@@ -240,7 +240,7 @@ class SlicerTrajectoryModel:
                                           self.targetMarkupModifiedCallback)
         self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
                                          self.entryMarkupModifiedCallback)
-
+        #TODO make changeable
         self.targetMarkupNode.SetNthFiducialPosition(0, 0, 0, 0)
         self.entryMarkupNode.SetNthFiducialPosition(0, 100, 100, 100)
         # self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
@@ -251,10 +251,14 @@ class SlicerTrajectoryModel:
     def select(self):
         self.lineModelNode.GetDisplayNode().SetSliceIntersectionVisibility(True)
         self.selected_bool = True
+        self.targetMarkupNode.SetLocked(0)
+        self.entryMarkupNode.SetLocked(0)
 
     def deselect(self):
         self.lineModelNode.GetDisplayNode().SetSliceIntersectionVisibility(False)
         self.selected_bool = False
+        self.targetMarkupNode.SetLocked(1)
+        self.entryMarkupNode.SetLocked(1)
 
     def targetMarkupModifiedCallback(self, caller, event):
         pos1 = [0.0, 0.0, 0.0]

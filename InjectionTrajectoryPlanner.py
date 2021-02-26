@@ -216,7 +216,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         """Trajectory Line"""
         # Call UpdateSphere whenever the fiducials are changed
         self.selectedTraj = sh.SlicerTrajectoryModel(self.trajNum)
-
+        self.addSelectedTrajObservers(self.selectedTraj)
         self.trajList = np.array([self.selectedTraj])
 
         # self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
@@ -286,7 +286,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
                   " - Hold SHIFT while hovering mouse to change slice intersection\n"
                   " - Right click and drag for zoom\n"
                   " - Left click and drag for image settings\n"
-                  " - Click and drag points to move\n"
+                  " - Click and drag points to move (only selected trajectory)\n"
                   " - Mouse scroll between slices\n")
         x.setWordWrap(True)
 
@@ -296,8 +296,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.trajSelector = slicer.qMRMLNodeComboBox()
         self.trajSelector.nodeTypes = ["vtkMRMLModelNode"]
         self.trajSelector.selectNodeUponCreation = True
-        self.trajSelector.addEnabled = True
-        self.trajSelector.removeEnabled = True
+        self.trajSelector.addEnabled = False
+        self.trajSelector.removeEnabled = False
         self.trajSelector.noneEnabled = False
         self.trajSelector.showHidden = False
         self.trajSelector.showChildNodeTypes = False
@@ -305,7 +305,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.trajSelector.setToolTip("Select the Trajectory to Plan:")
         self.trajSelector.setCurrentNode(self.selectedTraj.lineModelNode)
         self.trajSelector.setNodeTypeLabel('Trajectory',"vtkMRMLModelNode")
-        actionsFormLayout.addRow("Select Trajectory: ", self.trajSelector)
+        actionsFormLayout.addRow("Select Trajectory to Edit: ", self.trajSelector)
 
         """Add Trajectory Button"""
         self.addTrajectoryButton = qt.QPushButton("Add Trajectory")
@@ -444,14 +444,23 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         pass
 
     def onAddTrajectoryButton(self):
+        logic = InjectionTrajectoryPlannerLogic()
+
         self.onSaveTrajectoryButton()  # Save the previous one, just to be safe
         self.onAlignAxesToASCButton()
-        
+
+        for observer in self.SelectedTrajObservers:  # Get rid of selected observer
+            slicer.mrmlScene.RemoveObserver(observer)
+        self.selectedTraj.deselect()
+
         self.trajNumMax += 1
         self.trajNum = self.trajNumMax
+
         self.selectedTraj = sh.SlicerTrajectoryModel(self.trajNum)
         self.trajList = np.append(self.trajList, self.selectedTraj)
         self.trajSelector.setCurrentNode(self.selectedTraj.lineModelNode)
+        self.addSelectedTrajObservers(self.selectedTraj)
+        self.onJumpToTargetButton()
 
     def onDeleteTrajectoryButton(self):
         i=1
@@ -533,14 +542,16 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
         self.downAxisBool = False
 
-    # def targetMarkupModifiedCallback(self, caller, event):
+    def targetMarkupModifiedCallback(self, caller, event):
+        pass
     #     pos1 = [0.0, 0.0, 0.0]
     #     self.targetMarkupNode.GetNthFiducialPosition(0, pos1)
     #     self.selectedTraj.line.SetPoint1(pos1)
     #     self.selectedTraj.line.Update()
     #     self.UpdateToolModel()
     #
-    # def entryMarkupModifiedCallback(self, caller, event):
+    def entryMarkupModifiedCallback(self, caller, event):
+        pass
     #     pos2 = [0.0, 0.0, 0.0]
     #     self.entryMarkupNode.GetNthFiducialPosition(0, pos2)
     #     self.selectedTraj.line.SetPoint2(pos2)
@@ -548,6 +559,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     #     self.UpdateToolModel()
 
 ###TODO OBLIQUE VIEWS ARE DAT BUT UPDATES IN RT AND REVERTS WHEN YOU LET GO
+###TODO ADD TRAJ FROM FILE
 
     def targetMarkupEndInteractionCallback(self, caller, event):
         if hasattr(self, 'downAxisBool') and self.downAxisBool:
@@ -674,6 +686,19 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
         robot_ee_entry_transform = np.matmul(np.linalg.inv(hand_eye_transform), entry_transform)
         sh.updateTransformMatrixFromArray(self.robot_ee_entry, robot_ee_entry_transform)
+
+    def addSelectedTrajObservers(self, selectedTraj):
+        obs_list = []
+        obs_list.append(selectedTraj.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
+                                                       self.targetMarkupModifiedCallback))
+        obs_list.append(selectedTraj.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
+                                                      self.entryMarkupModifiedCallback))
+        obs_list.append(selectedTraj.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
+                                          self.targetMarkupEndInteractionCallback))
+        obs_list.append(selectedTraj.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
+                                         self.entryMarkupEndInteractionCallback))
+        self.SelectedTrajObservers = obs_list
+
 
     # def projectCurrentTrajPoint(self):
     #     if hasattr(self, 'downAxisBool') and self.downAxisBool:
@@ -836,6 +861,8 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         greenSliceNode.SetOrientationToCoronal()
         p_target = np.array([0.0, 0.0, 0.0])
         targetMarkupNode.GetNthFiducialPosition(0, p_target)
+
+
 
         # redSliceToRAS = redSliceNode.GetSliceToRAS()
         # redSliceToRAS.SetElement(0, 3, p_target[0])
