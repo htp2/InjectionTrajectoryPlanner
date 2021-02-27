@@ -257,6 +257,12 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.addTestDataButton.enabled = True
         parametersFormLayout.addRow(self.addTestDataButton)
 
+        """Add Test Data Button"""
+        self.addTrajFromFileButton = qt.QPushButton("Add Trajectories from File")
+        self.addTrajFromFileButton.toolTip = "Add previously generated trajectories from an output file"
+        self.addTrajFromFileButton.enabled = True
+        parametersFormLayout.addRow(self.addTrajFromFileButton)
+
         """Toggle Slice Intersections Button"""
         self.toggleSliceIntersectionButton = qt.QPushButton("Toggle Slice Intersections")
         self.toggleSliceIntersectionButton.toolTip = "Turn on / off colored lines representing slice planes"
@@ -312,7 +318,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
 
         """Add Trajectory Button"""
-        self.addTrajectoryButton = qt.QPushButton("Add Trajectory")
+        self.addTrajectoryButton = qt.QPushButton("Add New Trajectory")
         actionsFormLayout.addRow(self.addTrajectoryButton)
 
         """Delete Trajectory Button"""
@@ -437,6 +443,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.alignAxesToTrajectoryButton.connect('clicked(bool)', self.onAlignAxesToTrajectoryButton)
         self.alignAxesToASCButton.connect('clicked(bool)', self.onAlignAxesToASCButton)
 
+        self.addTrajFromFileButton.connect('clicked(bool)', self.onAddTrajFromFileButton)
+
         self.toggleRedSliceVisibilityButton.connect('clicked(bool)', self.onToggleRedSliceVisibilityButton)
         self.toggleYellowSliceVisibilityButton.connect('clicked(bool)', self.onToggleYellowSliceVisibilityButton)
         self.toggleGreenSliceVisibilityButton.connect('clicked(bool)', self.onToggleGreenSliceVisibilityButton)
@@ -474,9 +482,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             self.trajList[del_index].deleteNodes()
             self.trajList = np.delete(self.trajList, del_index)
 
-
-
-
     def onSaveTrajectoryButton(self):
         if not os.path.exists(self.outdir):
             os.makedirs(self.outdir)
@@ -491,6 +496,17 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             slicer.util.saveNode(self.toolMeshModel.transform_node, trajoutdir+'/needle.h5')
 
         print('Trajectories saved to '+ self.outdir)
+
+    def onAddTrajFromFileButton(self): ## TODO FINISH ADD TRAJ FROM FILE
+        file_success = False
+        ## Read file
+        if file_success:
+            tpos = np.array([0.0, 0.0, 0.0])
+            epos = np.array([0.0, 0.0, 0.0])
+            # Info from file
+            self.onAddTrajectoryButton()
+            self.selectedTraj.targetMarkupNode.SetNthFiducialPosition(0, tpos[0], tpos[1], tpos[2])
+            self.selectedTraj.entryMarkupNode.SetNthFiducialPosition(0, epos[0], epos[1], epos[2])
 
     def onAddTestDataButton(self):
         logic = InjectionTrajectoryPlannerLogic()
@@ -581,7 +597,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     #     self.UpdateToolModel()
 
 ###TODO OBLIQUE VIEWS ARE DAT BUT UPDATES IN RT AND REVERTS WHEN YOU LET GO
-###TODO ADD TRAJ FROM FILE
+###TODO ADD CLEAN OUTPUT WHERE ALL IN ONE MARKUPS LIST
 
     def targetMarkupEndInteractionCallback(self, caller, event):
         if hasattr(self, 'downAxisBool') and self.downAxisBool:
