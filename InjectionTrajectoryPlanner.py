@@ -94,7 +94,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.logic = InjectionTrajectoryPlannerLogic()
         self.redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
         self.lastRedSliceOffset = self.redSliceNode.GetSliceOffset()
-        self.trajNum = 1
         self.trajNumMax = 1  # Need to keep track of this so we can name new trajectories correctly
 
 
@@ -215,7 +214,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
         """Trajectory Line"""
         # Call UpdateSphere whenever the fiducials are changed
-        self.selectedTraj = sh.SlicerTrajectoryModel(self.trajNum)
+        self.selectedTraj = sh.SlicerTrajectoryModel(1)
         self.addSelectedTrajObservers(self.selectedTraj)
         self.trajList = np.array([self.selectedTraj])
 
@@ -293,19 +292,24 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         actionsFormLayout.addRow(x)
 
         """Select Trajectory"""
-        self.trajSelector = slicer.qMRMLNodeComboBox()
-        self.trajSelector.nodeTypes = ["vtkMRMLModelNode"]
-        self.trajSelector.selectNodeUponCreation = True
-        self.trajSelector.addEnabled = False
-        self.trajSelector.removeEnabled = False
-        self.trajSelector.noneEnabled = False
-        self.trajSelector.showHidden = False
-        self.trajSelector.showChildNodeTypes = False
-        self.trajSelector.setMRMLScene(slicer.mrmlScene)
-        self.trajSelector.setToolTip("Select the Trajectory to Plan:")
-        self.trajSelector.setCurrentNode(self.selectedTraj.lineModelNode)
-        self.trajSelector.setNodeTypeLabel('Trajectory',"vtkMRMLModelNode")
+        # self.trajSelector = slicer.qMRMLNodeComboBox()
+        # self.trajSelector.nodeTypes = ["vtkMRMLModelNode"]
+        # self.trajSelector.selectNodeUponCreation = True
+        # self.trajSelector.addEnabled = False
+        # self.trajSelector.removeEnabled = False
+        # self.trajSelector.noneEnabled = False
+        # self.trajSelector.showHidden = False
+        # self.trajSelector.showChildNodeTypes = False
+        # self.trajSelector.setMRMLScene(slicer.mrmlScene)
+        # self.trajSelector.setToolTip("Select the Trajectory to Plan:")
+        # self.trajSelector.setCurrentNode(self.selectedTraj.lineModelNode)
+        # self.trajSelector.setNodeTypeLabel('Trajectory',"vtkMRMLModelNode")
+        self.trajSelector = qt.QComboBox()
+        self.trajSelector.addItem("Trajectory 1")
+        self.trajSelector.currentIndexChanged.connect(self.onTrajSelectionChange)
+
         actionsFormLayout.addRow("Select Trajectory to Edit: ", self.trajSelector)
+
 
         """Add Trajectory Button"""
         self.addTrajectoryButton = qt.QPushButton("Add Trajectory")
@@ -444,26 +448,33 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         pass
 
     def onAddTrajectoryButton(self):
-        logic = InjectionTrajectoryPlannerLogic()
-
         self.onSaveTrajectoryButton()  # Save the previous one, just to be safe
         self.onAlignAxesToASCButton()
 
         for observer in self.SelectedTrajObservers:  # Get rid of selected observer
             slicer.mrmlScene.RemoveObserver(observer)
-        self.selectedTraj.deselect()
+        if self.trajSelector.count > 1:  # handle edge case where you deleted everything and add new
+            self.selectedTraj.deselect()
 
         self.trajNumMax += 1
-        self.trajNum = self.trajNumMax
 
-        self.selectedTraj = sh.SlicerTrajectoryModel(self.trajNum)
+        self.selectedTraj = sh.SlicerTrajectoryModel(self.trajNumMax)
         self.trajList = np.append(self.trajList, self.selectedTraj)
-        self.trajSelector.setCurrentNode(self.selectedTraj.lineModelNode)
-        self.addSelectedTrajObservers(self.selectedTraj)
-        self.onJumpToTargetButton()
+        self.trajSelector.addItem("Trajectory " + str(self.selectedTraj.trajNum))
+        self.trajSelector.setCurrentIndex(self.trajSelector.count-1)
 
     def onDeleteTrajectoryButton(self):
-        i=1
+        if self.trajSelector.count:  # don't do anything if no trajectories
+            del_index = self.trajSelector.currentIndex
+            for observer in self.SelectedTrajObservers:  # Get rid of selected observer
+                slicer.mrmlScene.RemoveObserver(observer)
+            self.selectedTraj.deselect()
+            self.trajSelector.removeItem(del_index)
+
+            self.trajList[del_index].deleteNodes()
+            self.trajList = np.delete(self.trajList, del_index)
+
+
 
 
     def onSaveTrajectoryButton(self):
@@ -541,6 +552,17 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         if hasattr(self, 'downAxisBool') and self.downAxisBool:
             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
         self.downAxisBool = False
+
+    def onTrajSelectionChange(self, index):
+        self.onAlignAxesToASCButton()
+        for observer in self.SelectedTrajObservers:  # Get rid of selected observer
+            slicer.mrmlScene.RemoveObserver(observer)
+        self.selectedTraj.deselect()
+        if index >=0:
+            self.selectedTraj = self.trajList[index]
+            self.addSelectedTrajObservers(self.selectedTraj)
+            self.selectedTraj.select()
+            self.onJumpToTargetButton()
 
     def targetMarkupModifiedCallback(self, caller, event):
         pass

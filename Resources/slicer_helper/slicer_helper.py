@@ -207,7 +207,8 @@ class SlicerVolumeModel:
 class SlicerTrajectoryModel:
     """Makes a line object as a vtkMRMLModelNode"""
 
-    def __init__(self, trajNum=0):
+    def __init__(self, trajNum):
+        self.trajNum = trajNum
         self.hasTool_bool = False  # Future Expansion
         self.selected_bool = True
         self.line = vtk.vtkLineSource()
@@ -277,7 +278,11 @@ class SlicerTrajectoryModel:
         if self.hasTool_bool:
             self.UpdateToolModel()
 
-#
+    def deleteNodes(self):
+        slicer.mrmlScene.RemoveNode(self.lineModelNode)
+        slicer.mrmlScene.RemoveNode(self.targetMarkupNode)
+        slicer.mrmlScene.RemoveNode(self.entryMarkupNode)
+
 # class SlicerDrillTip:
 #     def __init__(self, volume_model, radius):
 #         self.volume_model = volume_model
@@ -310,6 +315,7 @@ class SlicerTrajectoryModel:
 #         bone: mlab volume created from the voxels of the input nrrd
 #         shape: dimensions of the voxel data
 #         preve_state: mlab state stack created in the run_mayavi function
+#         dim_scales: list of dimensional scales based on voxel resolution
 #         dim_scales: list of dimensional scales based on voxel resolution
 #         """
 #         # setup voxel scales
