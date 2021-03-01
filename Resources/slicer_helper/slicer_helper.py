@@ -160,6 +160,20 @@ def make_igtl_node(ip, port, name):
     return igtl_connector
 
 
+def get_markup_node_pos_from_fcsv(filename):
+    f = open(filename, "r")
+    f.readline()
+    f.readline()
+    f.readline()
+    data = f.readline()
+    print(data)
+    data = data.split(',')
+    pos = np.array([float(data[1]), float(data[2]), float(data[3])])
+    return pos
+
+
+
+
 class SlicerMeshModel:
     """ Takes a mesh model (stl or dae), imports it into Slicer, and sets up a transform in Slicer that the mesh model
     observes and follows automatically """

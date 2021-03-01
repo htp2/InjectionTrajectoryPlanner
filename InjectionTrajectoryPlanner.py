@@ -250,19 +250,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.DATrajectoryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
                                                 self.DATPointEndInteractionCallback)
 
-
-        """Add Test Data Button"""
-        self.addTestDataButton = qt.QPushButton("Add Test Data")
-        self.addTestDataButton.toolTip = "Add test volume/image data"
-        self.addTestDataButton.enabled = True
-        parametersFormLayout.addRow(self.addTestDataButton)
-
-        """Add Test Data Button"""
-        self.addTrajFromFileButton = qt.QPushButton("Add Trajectories from File")
-        self.addTrajFromFileButton.toolTip = "Add previously generated trajectories from an output file"
-        self.addTrajFromFileButton.enabled = True
-        parametersFormLayout.addRow(self.addTrajFromFileButton)
-
         """Toggle Slice Intersections Button"""
         self.toggleSliceIntersectionButton = qt.QPushButton("Toggle Slice Intersections")
         self.toggleSliceIntersectionButton.toolTip = "Turn on / off colored lines representing slice planes"
@@ -271,6 +258,28 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.viewNodes = slicer.util.getNodesByClass('vtkMRMLSliceCompositeNode')  # Default is ON
         for viewNode in self.viewNodes:
             viewNode.SetSliceIntersectionVisibility(1)
+
+        """Add Test Data Button"""
+        self.addTestDataButton = qt.QPushButton("Add Test Data")
+        self.addTestDataButton.toolTip = "Add test volume/image data"
+        self.addTestDataButton.enabled = True
+        parametersFormLayout.addRow(self.addTestDataButton)
+
+        """Add Trajectories from File Button"""
+        self.loadTrajLayout = qt.QHBoxLayout()
+
+        self.inputDirSelector = ctk.ctkPathLineEdit()
+        self.inputDirSelector.filters = ctk.ctkPathLineEdit.Dirs
+        # self.inputDirSelector.settingKey = 'DICOMPatcherInputDir'
+        self.inputDirSelector.toolTip = "Add previously generated trajectories from an output file"
+        self.loadTrajLayout.addWidget(self.inputDirSelector)
+
+
+        self.addTrajFromFileButton = qt.QPushButton("Load")
+        self.addTrajFromFileButton.toolTip = "Add previously generated trajectories from an output file"
+        # self.addTrajFromFileButton.enabled = True
+        self.loadTrajLayout.addWidget(self.addTrajFromFileButton)
+        parametersFormLayout.addRow("Add Trajectories from Folder: ", self.loadTrajLayout)
 
         """Toggle Slice Visualization Button [TODO:Separate to 3]"""
         self.toggleSliceVisibilityButtonLayout = qt.QHBoxLayout()
@@ -298,18 +307,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         actionsFormLayout.addRow(x)
 
         """Select Trajectory"""
-        # self.trajSelector = slicer.qMRMLNodeComboBox()
-        # self.trajSelector.nodeTypes = ["vtkMRMLModelNode"]
-        # self.trajSelector.selectNodeUponCreation = True
-        # self.trajSelector.addEnabled = False
-        # self.trajSelector.removeEnabled = False
-        # self.trajSelector.noneEnabled = False
-        # self.trajSelector.showHidden = False
-        # self.trajSelector.showChildNodeTypes = False
-        # self.trajSelector.setMRMLScene(slicer.mrmlScene)
-        # self.trajSelector.setToolTip("Select the Trajectory to Plan:")
-        # self.trajSelector.setCurrentNode(self.selectedTraj.lineModelNode)
-        # self.trajSelector.setNodeTypeLabel('Trajectory',"vtkMRMLModelNode")
         self.trajSelector = qt.QComboBox()
         self.trajSelector.addItem("Trajectory 1")
         self.trajSelector.currentIndexChanged.connect(self.onTrajSelectionChange)
@@ -457,30 +454,37 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     def onAddTrajectoryButton(self):
         self.onSaveTrajectoryButton()  # Save the previous one, just to be safe
-        self.onAlignAxesToASCButton()
+        if self.trajSelector.count>  0:  # account for case when all traj deleted and add new one
+            self.onAlignAxesToASCButton()
 
-        for observer in self.SelectedTrajObservers:  # Get rid of selected observer
-            slicer.mrmlScene.RemoveObserver(observer)
-        if self.trajSelector.count > 1:  # handle edge case where you deleted everything and add new
-            self.selectedTraj.deselect()
+        # for observer in self.SelectedTrajObservers:  # Get rid of selected observer
+        #     slicer.mrmlScene.RemoveObserver(observer)
+        # if self.trajSelector.count > 1:  # handle edge case where you deleted everything and add new
+        #     self.selectedTraj.deselect()
 
         self.trajNumMax += 1
 
-        self.selectedTraj = sh.SlicerTrajectoryModel(self.trajNumMax)
-        self.trajList = np.append(self.trajList, self.selectedTraj)
-        self.trajSelector.addItem("Trajectory " + str(self.selectedTraj.trajNum))
+        newTraj = sh.SlicerTrajectoryModel(self.trajNumMax)
+        self.trajList = np.append(self.trajList, newTraj)
+        self.trajSelector.addItem("Trajectory " + str(self.trajNumMax))
         self.trajSelector.setCurrentIndex(self.trajSelector.count-1)
 
     def onDeleteTrajectoryButton(self):
         if self.trajSelector.count:  # don't do anything if no trajectories
             del_index = self.trajSelector.currentIndex
-            for observer in self.SelectedTrajObservers:  # Get rid of selected observer
-                slicer.mrmlScene.RemoveObserver(observer)
-            self.selectedTraj.deselect()
-            self.trajSelector.removeItem(del_index)
-
+            # for observer in self.SelectedTrajObservers:  # Get rid of selected observer
+            #     slicer.mrmlScene.RemoveObserver(observer)
             self.trajList[del_index].deleteNodes()
             self.trajList = np.delete(self.trajList, del_index)
+            self.selectedTraj = None
+            self.trajSelector.removeItem(del_index)
+
+
+            # if self.trajSelector.currentIndex == del_index:
+            #     self.onTrajSelectionChange(del_index)  # accounts for edge case when deleting middle items and index # doesn't change
+
+            # if self.trajSelector.count:  # don't do anything if no more trajectories
+            #     self.trajSelector.setCurrentIndex(0)
 
     def onSaveTrajectoryButton(self):
         if not os.path.exists(self.outdir):
@@ -495,18 +499,24 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             slicer.util.saveNode(traj.lineModelNode, trajoutdir + '/line.vtk')
             slicer.util.saveNode(self.toolMeshModel.transform_node, trajoutdir+'/toolTransform.h5')
 
-        print('Trajectories saved to '+ self.outdir)
+        print('Trajectories saved to ' + self.outdir)
 
-    def onAddTrajFromFileButton(self): ## TODO FINISH ADD TRAJ FROM FILE
-        file_success = False
-        ## Read file
-        if file_success:
-            tpos = np.array([0.0, 0.0, 0.0])
-            epos = np.array([0.0, 0.0, 0.0])
-            # Info from file
-            self.onAddTrajectoryButton()
-            self.selectedTraj.targetMarkupNode.SetNthFiducialPosition(0, tpos[0], tpos[1], tpos[2])
-            self.selectedTraj.entryMarkupNode.SetNthFiducialPosition(0, epos[0], epos[1], epos[2])
+    def onAddTrajFromFileButton(self):  ## TODO FINISH ADD TRAJ FROM FILE
+        if self.inputDirSelector.currentPath:
+            ## Read file
+            dir_list = [x[0] for x in os.walk(self.inputDirSelector.currentPath)]
+            if len(dir_list) > 1:
+                dir_list = dir_list[1:]  # skip 0th (self) entry if a dir of dirs  # TODO: could clean up implementation
+            for traj_dir in dir_list:
+                epos = sh.get_markup_node_pos_from_fcsv(traj_dir + '/Entry.fcsv')
+                tpos = sh.get_markup_node_pos_from_fcsv(traj_dir + '/Target.fcsv')
+                # slicer.util.saveNode(traj.lineModelNode, trajoutdir + '/line.vtk')
+                # slicer.util.saveNode(self.toolMeshModel.transform_node, trajoutdir + '/toolTransform.h5')
+                self.onAddTrajectoryButton()
+                self.selectedTraj.targetMarkupNode.SetNthFiducialPosition(0, tpos[0], tpos[1], tpos[2])
+                self.selectedTraj.entryMarkupNode.SetNthFiducialPosition(0, epos[0], epos[1], epos[2])
+        else:
+            print("Please input a valid directory for loading")
 
     def onAddTestDataButton(self):
         logic = InjectionTrajectoryPlannerLogic()
@@ -570,11 +580,12 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.downAxisBool = False
 
     def onTrajSelectionChange(self, index):
-        self.onAlignAxesToASCButton()
+        if self.selectedTraj:  # skips for delete case
+            self.onAlignAxesToASCButton()
+            self.selectedTraj.deselect()
         for observer in self.SelectedTrajObservers:  # Get rid of selected observer
             slicer.mrmlScene.RemoveObserver(observer)
-        self.selectedTraj.deselect()
-        if index >=0:
+        if index >= 0:
             self.selectedTraj = self.trajList[index]
             self.addSelectedTrajObservers(self.selectedTraj)
             self.selectedTraj.select()
