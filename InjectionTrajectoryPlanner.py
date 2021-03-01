@@ -130,48 +130,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.test_volume_data_filename = self.dir + '/Resources/volumes/test_spine_segmentation.nrrd'
         self.test_ct_directory = self.dir + '/Resources/images/Case1 CT'  # input folder with DICOM files
 
-        """Target Point Markup & Selector"""
-        # self.targetMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-        # self.targetMarkupNode.SetName('Target')
-        # n = slicer.modules.markups.logic().AddFiducial()
-        # self.targetMarkupNode.SetNthFiducialLabel(n, "Target")
-        # # each markup is given a unique id which can be accessed from the superclass level
-        # self.targetFiducialID = self.targetMarkupNode.GetNthMarkupID(n)
-
-        # self.targetSelector = slicer.qMRMLNodeComboBox()
-        # self.targetSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
-        # self.targetSelector.selectNodeUponCreation = True
-        # self.targetSelector.addEnabled = True
-        # self.targetSelector.removeEnabled = False
-        # self.targetSelector.noneEnabled = False
-        # self.targetSelector.showHidden = False
-        # self.targetSelector.showChildNodeTypes = False
-        # self.targetSelector.setMRMLScene(slicer.mrmlScene)
-        # self.targetSelector.setToolTip("Pick the target marker")
-        # self.targetSelector.setCurrentNode(self.targetMarkupNode)
-        # parametersFormLayout.addRow("Target Marker: ", self.targetSelector)
-
-        """Entry Point Markup & Selector"""
-        # self.entryMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-        # self.entryMarkupNode.SetName('Entry')
-        # n = slicer.modules.markups.logic().AddFiducial()
-        # self.entryMarkupNode.SetNthFiducialLabel(n, "Entry")
-        # # each markup is given a unique id which can be accessed from the superclass level
-        # self.EntryFiducialID = self.entryMarkupNode.GetNthMarkupID(n)
-
-        # self.entrySelector = slicer.qMRMLNodeComboBox()
-        # self.entrySelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
-        # self.entrySelector.selectNodeUponCreation = True
-        # self.entrySelector.addEnabled = True
-        # self.entrySelector.removeEnabled = True
-        # self.entrySelector.noneEnabled = False
-        # self.entrySelector.showHidden = False
-        # self.entrySelector.showChildNodeTypes = False
-        # self.entrySelector.setMRMLScene(slicer.mrmlScene)
-        # self.entrySelector.setToolTip("Pick the trajectory Entry marker")
-        # self.entrySelector.setCurrentNode(self.entryMarkupNode)
-        # parametersFormLayout.addRow("Path Entry Marker: ", self.entrySelector)
-
         """Tool Model Markup & Selector"""
         self.entry_transform_node = slicer.vtkMRMLTransformNode()
         self.entry_transform_node.SetName('needle_entry')
@@ -218,19 +176,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.addSelectedTrajObservers(self.selectedTraj)
         self.trajList = np.array([self.selectedTraj])
 
-        # self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
-        #                                   self.targetMarkupModifiedCallback)
-        # self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
-        #                                  self.entryMarkupModifiedCallback)
-        #
-        # self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
-        #                                   self.targetMarkupEndInteractionCallback)
-        # self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
-        #                                   self.entryMarkupEndInteractionCallback)
-        # self.targetMarkupNode.SetNthFiducialPosition(0, 0, 0, 0)
-        # self.entryMarkupNode.SetNthFiducialPosition(0, 100, 100, 100)
-
-
         self.downAxisBool = False
         self.lastDATFromProjection = False  # TODO: Make this less terrible
         # down-axis trajectory markup node
@@ -270,7 +215,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
         self.inputDirSelector = ctk.ctkPathLineEdit()
         self.inputDirSelector.filters = ctk.ctkPathLineEdit.Dirs
-        # self.inputDirSelector.settingKey = 'DICOMPatcherInputDir'
         self.inputDirSelector.toolTip = "Add previously generated trajectories from an output file"
         self.loadTrajLayout.addWidget(self.inputDirSelector)
 
@@ -387,8 +331,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         vizFormLayout.addRow(self.jumpVizLabelsLayout)
         vizFormLayout.addRow(self.jumpVizButtonsLayout)
 
-
-
         self.sliceVizLabelsLayout = qt.QHBoxLayout()
         self.sliceVizButtonsLayout = qt.QHBoxLayout()
         x = qt.QLabel()
@@ -457,11 +399,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         if self.trajSelector.count>  0:  # account for case when all traj deleted and add new one
             self.onAlignAxesToASCButton()
 
-        # for observer in self.SelectedTrajObservers:  # Get rid of selected observer
-        #     slicer.mrmlScene.RemoveObserver(observer)
-        # if self.trajSelector.count > 1:  # handle edge case where you deleted everything and add new
-        #     self.selectedTraj.deselect()
-
         self.trajNumMax += 1
 
         newTraj = sh.SlicerTrajectoryModel(self.trajNumMax)
@@ -478,13 +415,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             self.trajList = np.delete(self.trajList, del_index)
             self.selectedTraj = None
             self.trajSelector.removeItem(del_index)
-
-
-            # if self.trajSelector.currentIndex == del_index:
-            #     self.onTrajSelectionChange(del_index)  # accounts for edge case when deleting middle items and index # doesn't change
-
-            # if self.trajSelector.count:  # don't do anything if no more trajectories
-            #     self.trajSelector.setCurrentIndex(0)
 
     def onSaveTrajectoryButton(self):
         if not os.path.exists(self.outdir):
@@ -696,9 +626,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
                                                         new_entry_pos[2])
             self.logic.alignAxesWithTrajectory(self.DATrajectoryMarkupNode, self.selectedTraj.entryMarkupNode)
     # # noinspection PyUnusedLocal
-    # def DATrajectoryMarkupModifiedCallback(self, caller, event):
-    #     if self.downAxisBool:
-
 
     def UpdateToolModel(self):
         transform = np.eye(4)
@@ -747,31 +674,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         obs_list.append(selectedTraj.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
                                          self.entryMarkupEndInteractionCallback))
         self.SelectedTrajObservers = obs_list
-
-
-    # def projectCurrentTrajPoint(self):
-    #     if hasattr(self, 'downAxisBool') and self.downAxisBool:
-    #         p_target = np.array([0.0, 0.0, 0.0])
-    #         p_Entry = np.array([0.0, 0.0, 0.0])
-    #         self.targetMarkupNode.GetNthFiducialPosition(0, p_target)
-    #         self.EntryMarkupNode.GetNthFiducialPosition(0, p_Entry)
-    #         traj = (p_target-p_Entry)
-    #         unit_traj = traj/np.linalg.norm(traj)
-    #         redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
-    #         redSliceViewPoint = sh.arrayFromVTKMatrix(redSliceNode.GetSliceToRAS())[0:3, 3]
-    #
-    #         in_traj = 0 < np.dot((redSliceViewPoint-p_Entry)/np.linalg.norm(traj), unit_traj) < 1
-    #         if in_traj:
-    #             self.lastDATFromProjection = True
-    #             self.DATrajectoryMarkupNode.SetNthFiducialPosition(0,
-    #                                                                redSliceViewPoint[0],
-    #                                                                redSliceViewPoint[1],
-    #                                                                redSliceViewPoint[2],)
-    #             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, True)
-    #         else:
-    #             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
-    #     else:
-    #         self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
 
 #
 # InjectionTrajectoryPlannerLogic
@@ -893,13 +795,6 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
 
         greenSliceNode.UpdateMatrices()
 
-        # # Turn on trajectory manipulation point
-        # for i in range(DATrajectoryMarkupNode.GetNumberOfMarkups()):
-        #     DATrajectoryMarkupNode.SetNthFiducialVisibility(i, True)
-        # # Turn off trajectory manipulation point
-        # for i in range(DATrajectoryMarkupNode.GetNumberOfMarkups()):
-        #     DATrajectoryMarkupNode.SetNthFiducialVisibility(i, False)
-
     def resetAxesToASC(self, targetMarkupNode):
         import numpy as np
         redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
@@ -910,22 +805,6 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         greenSliceNode.SetOrientationToCoronal()
         p_target = np.array([0.0, 0.0, 0.0])
         targetMarkupNode.GetNthFiducialPosition(0, p_target)
-
-
-
-        # redSliceToRAS = redSliceNode.GetSliceToRAS()
-        # redSliceToRAS.SetElement(0, 3, p_target[0])
-        # redSliceToRAS.SetElement(1, 3, p_target[1])
-        # redSliceToRAS.SetElement(2, 3, p_target[2])
-        # yellowSliceToRAS = yellowSliceNode.GetSliceToRAS()
-        # yellowSliceToRAS.SetElement(0, 3, p_target[0])
-        # yellowSliceToRAS.SetElement(1, 3, p_target[1])
-        # yellowSliceToRAS.SetElement(2, 3, p_target[2])
-        # greenSliceToRAS = greenSliceNode.GetSliceToRAS()
-        # greenSliceToRAS.SetElement(0, 3, p_target[0])
-        # greenSliceToRAS.SetElement(1, 3, p_target[1])
-        # greenSliceToRAS.SetElement(2, 3, p_target[2])
-
 
 # noinspection PyMethodMayBeStatic
 class InjectionTrajectoryPlannerTest(ScriptedLoadableModuleTest):
