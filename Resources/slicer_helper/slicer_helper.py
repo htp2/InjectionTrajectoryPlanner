@@ -207,7 +207,7 @@ class SlicerVolumeModel:
 class SlicerTrajectoryModel:
     """Makes a line object as a vtkMRMLModelNode"""
 
-    def __init__(self, trajNum):
+    def __init__(self, trajNum, p_entry=np.array([0.0, 0.0, 0.0]), p_target=np.array([100.0, 100.0, 100.0])):
         self.trajNum = trajNum
         self.hasTool_bool = False  # Future Expansion
         self.selected_bool = True
@@ -241,9 +241,8 @@ class SlicerTrajectoryModel:
                                           self.targetMarkupModifiedCallback)
         self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
                                          self.entryMarkupModifiedCallback)
-        #TODO make changeable
-        self.targetMarkupNode.SetNthFiducialPosition(0, 0, 0, 0)
-        self.entryMarkupNode.SetNthFiducialPosition(0, 100, 100, 100)
+        self.targetMarkupNode.SetNthFiducialPosition(0, p_entry[0],  p_entry[1],  p_entry[2])
+        self.entryMarkupNode.SetNthFiducialPosition(0, p_target[0], p_target[1], p_target[2])
         # self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
         #                                   self.targetMarkupEndInteractionCallback)
         # self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,

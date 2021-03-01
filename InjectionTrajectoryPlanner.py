@@ -490,10 +490,10 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             trajoutdir = self.outdir+'/traj'+str(i+1)
             if not os.path.exists(trajoutdir):
                 os.makedirs(trajoutdir)
-            slicer.util.saveNode(self.selectedTraj.entryMarkupNode, trajoutdir+'/Entry.fcsv')
-            slicer.util.saveNode(self.selectedTraj.targetMarkupNode, trajoutdir+'/Target.fcsv')
-            slicer.util.saveNode(self.selectedTraj.lineModelNode, trajoutdir + '/line.vtk')
-            slicer.util.saveNode(self.toolMeshModel.transform_node, trajoutdir+'/needle.h5')
+            slicer.util.saveNode(traj.entryMarkupNode, trajoutdir+'/Entry.fcsv')
+            slicer.util.saveNode(traj.targetMarkupNode, trajoutdir+'/Target.fcsv')
+            slicer.util.saveNode(traj.lineModelNode, trajoutdir + '/line.vtk')
+            slicer.util.saveNode(self.toolMeshModel.transform_node, trajoutdir+'/toolTransform.h5')
 
         print('Trajectories saved to '+ self.outdir)
 
