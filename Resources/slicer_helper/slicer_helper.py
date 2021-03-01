@@ -207,10 +207,9 @@ class SlicerVolumeModel:
 class SlicerTrajectoryModel:
     """Makes a line object as a vtkMRMLModelNode"""
 
-    def __init__(self, trajNum):
+    def __init__(self, trajNum, selected_bool=True):
         self.trajNum = trajNum
         self.hasTool_bool = False  # Future Expansion
-        self.selected_bool = True
         self.line = vtk.vtkLineSource()
         modelsLogic = slicer.modules.models.logic()
         self.lineModelNode = modelsLogic.AddModel(self.line.GetOutput())

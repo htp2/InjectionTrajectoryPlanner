@@ -95,7 +95,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
         self.lastRedSliceOffset = self.redSliceNode.GetSliceOffset()
         self.trajNumMax = 1  # Need to keep track of this so we can name new trajectories correctly
-
+        self.obliqueRotatorLastStaticPos = np.array([0.0, 0.0, 0.0])
 
         actionsCollapsibleButton = ctk.ctkCollapsibleButton()
         actionsCollapsibleButton.text = "Actions"
@@ -292,7 +292,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
                   " - Right click and drag for zoom\n"
                   " - Left click and drag for image settings\n"
                   " - Click and drag points to move (only selected trajectory)\n"
-                  " - Mouse scroll between slices\n")
+                  " - Mouse scroll between slices\n"
+                  " - Hold mouse scroll wheel and drag to pan slices\n")
         x.setWordWrap(True)
 
         actionsFormLayout.addRow(x)
@@ -418,6 +419,14 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.alignAxesToTrajectoryButton.setIconSize(qt.QSize(50, 50))
         self.sliceVizButtonsLayout.addWidget(self.alignAxesToTrajectoryButton)
 
+        """Oblique View Button"""
+        self.obliqueViewButton = qt.QPushButton("Oblique Viewer")
+        self.obliqueViewButton.toolTip = "Center point can be dragged to rotate views to oblique angle"
+        # downTrajIcon = qt.QIcon(self.dir + '/Resources/Icons/downTraj.png')
+        # self.alignAxesToTrajectoryButton.setIcon(downTrajIcon)
+        # self.alignAxesToTrajectoryButton.setIconSize(qt.QSize(50, 50))
+        self.sliceVizButtonsLayout.addWidget(self.obliqueViewButton)
+
         vizFormLayout.addRow(self.sliceVizLabelsLayout)
         vizFormLayout.addRow(self.sliceVizButtonsLayout)
 
@@ -442,6 +451,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
         self.alignAxesToTrajectoryButton.connect('clicked(bool)', self.onAlignAxesToTrajectoryButton)
         self.alignAxesToASCButton.connect('clicked(bool)', self.onAlignAxesToASCButton)
+        self.obliqueViewButton.connect('clicked(bool)', self.onObliqueViewButton)
+
 
         self.addTrajFromFileButton.connect('clicked(bool)', self.onAddTrajFromFileButton)
 
@@ -569,6 +580,32 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
         self.downAxisBool = False
 
+    def onObliqueViewButton(self):
+        logic = InjectionTrajectoryPlannerLogic()
+        self.obliqueRotator = sh.SlicerTrajectoryModel(-1, selected_bool=True)
+        self.obliqueRotator.lineModelNode.SetName('Drag')
+        self.obliqueRotator.targetMarkupNode.SetName('Drag')
+        self.obliqueRotator.targetMarkupNode.SetNthFiducialLabel(0, 'Drag')
+        self.obliqueRotator.entryMarkupNode.HideFromEditorsOn()
+        self.obliqueRotator.entryMarkupNode.GetNthDisplayNode(0).VisibilityOff()
+        redSliceViewPoint = sh.arrayFromVTKMatrix(self.redSliceNode.GetSliceToRAS())[0:3, 3]
+        redSliceNormal = sh.arrayFromVTKMatrix(self.redSliceNode.GetSliceToRAS())[0:3, 2]
+
+        self.obliqueRotator.targetMarkupNode.SetNthFiducialPosition(0,
+                                                           redSliceViewPoint[0],
+                                                           redSliceViewPoint[1],
+                                                           redSliceViewPoint[2], )
+        self.obliqueRotator.entryMarkupNode.SetNthFiducialPosition(0,
+                                                           redSliceViewPoint[0],
+                                                           redSliceViewPoint[1],
+                                                           redSliceViewPoint[2], )
+        self.obliqueRotatorLastStaticPos = redSliceViewPoint
+        self.obliqueRotatorLastNormal = redSliceNormal
+        self.obliqueRotator.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
+                                          self.obliqueMarkupModifiedCallback)
+        self.obliqueRotator.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
+                                         self.obliqueMarkupEndInteractionCallback)
+
     def onTrajSelectionChange(self, index):
         self.onAlignAxesToASCButton()
         for observer in self.SelectedTrajObservers:  # Get rid of selected observer
@@ -596,6 +633,27 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     #     self.selectedTraj.line.Update()
     #     self.UpdateToolModel()
 
+    def obliqueMarkupModifiedCallback(self, caller, event):
+        # self.logic.obliqePivotView(self.obliqueRotator.targetMarkupNode, self.obliqueRotatorLastStaticPos, self.obliqueRotatorLastNormal)
+        pass
+    def obliqueMarkupEndInteractionCallback(self, caller, event):
+        self.logic.obliqePivotView(self.obliqueRotator.targetMarkupNode, self.obliqueRotatorLastStaticPos, self.obliqueRotatorLastNormal)
+
+        # print('obmee')
+        redSliceViewPoint = sh.arrayFromVTKMatrix(self.redSliceNode.GetSliceToRAS())[0:3, 3]
+        redSliceNormal = sh.arrayFromVTKMatrix(self.redSliceNode.GetSliceToRAS())[0:3, 2]
+
+        self.obliqueRotator.targetMarkupNode.SetNthFiducialPosition(0,
+                                                                    redSliceViewPoint[0],
+                                                                    redSliceViewPoint[1],
+                                                                    redSliceViewPoint[2], )
+        self.obliqueRotator.entryMarkupNode.SetNthFiducialPosition(0,
+                                                                   redSliceViewPoint[0],
+                                                                   redSliceViewPoint[1],
+                                                                   redSliceViewPoint[2], )
+        self.obliqueRotatorLastStaticPos = redSliceViewPoint
+        self.obliqueRotatorLastNormal = redSliceNormal
+
 ###TODO OBLIQUE VIEWS ARE DAT BUT UPDATES IN RT AND REVERTS WHEN YOU LET GO
 ###TODO ADD CLEAN OUTPUT WHERE ALL IN ONE MARKUPS LIST
 
@@ -605,8 +663,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             entry_pos = np.array([0.0, 0.0, 0.0])
             target_pos = np.array([0.0, 0.0, 0.0])
             self.DATrajectoryMarkupNode.GetNthFiducialPosition(0, DAT_pos)
-            self.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
-            self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
+            self.selectedTraj.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
+            self.selectedTraj.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
 
             old_entry_to_DAT = (DAT_pos - entry_pos)
             norm_old_entry_to_DAT = np.linalg.norm(old_entry_to_DAT)
@@ -624,8 +682,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             entry_pos = np.array([0.0, 0.0, 0.0])
             target_pos = np.array([0.0, 0.0, 0.0])
             self.DATrajectoryMarkupNode.GetNthFiducialPosition(0, DAT_pos)
-            self.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
-            self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
+            self.selectedTraj.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
+            self.selectedTraj.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
 
             old_target_to_DAT = (DAT_pos - target_pos)
             norm_old_target_to_DAT = np.linalg.norm(old_target_to_DAT)
@@ -836,6 +894,58 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         for name in ['Red', 'Yellow', 'Green']:
             sliceNode = slicer.app.layoutManager().sliceWidget(name).mrmlSliceNode()
             sliceNode.JumpSlice(pos[0], pos[1], pos[2])
+
+    def obliqePivotView(self, MarkupNode, p_last_static, normal_last_static):
+        pos = [0.0, 0.0, 0.0]
+        MarkupNode.GetNthFiducialPosition(0, pos)
+
+        redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
+        yellowSliceNode = slicer.util.getNode('vtkMRMLSliceNodeYellow')
+        greenSliceNode = slicer.util.getNode('vtkMRMLSliceNodeGreen')
+
+        redSliceToRAS = redSliceNode.GetSliceToRAS()
+        yellowSliceToRAS = yellowSliceNode.GetSliceToRAS()
+        greenSliceToRAS = greenSliceNode.GetSliceToRAS()
+
+        v = np.array(pos) - p_last_static
+        print('v: ', v)
+        n = normal_last_static
+        print('n: ', n)
+
+        # v_norm = np.linalg.norm(v)
+        # proj = (np.dot(n, v) / v_norm ** 2) * v
+
+        proj = n+v
+
+        sliceNormal = proj / max(np.linalg.norm(proj), 1e-8)
+        slicePosition = p_last_static
+
+        # v_norm = np.linalg.norm(v)
+        # new_pos = p_last_static + (np.dot(n, v) / v_norm ** 2) * v
+        # MarkupNode.SetNthFiducialPosition(0, new_pos[0], new_pos[1], new_pos[2])
+
+
+        setSlicePoseFromSliceNormalAndPosition(redSliceNode, sliceNormal, slicePosition)
+
+        swap_yellow = vtk.vtkMatrix4x4()
+        swap_yellow.SetElement(1, 1, 0)
+        swap_yellow.SetElement(2, 1, 1)
+        swap_yellow.SetElement(1, 2, 1)
+        swap_yellow.SetElement(2, 2, 0)
+        vtk.vtkMatrix4x4().Multiply4x4(redSliceToRAS, swap_yellow, yellowSliceToRAS)
+        yellowSliceNode.UpdateMatrices()
+
+        swap_green = vtk.vtkMatrix4x4()
+        swap_green.SetElement(0, 0, 0)
+        swap_green.SetElement(1, 0, -1)
+        swap_green.SetElement(1, 1, 0)
+        swap_green.SetElement(2, 1, 1)
+        swap_green.SetElement(0, 2, -1)
+        swap_green.SetElement(2, 2, 0)
+        vtk.vtkMatrix4x4().Multiply4x4(redSliceToRAS, swap_green, greenSliceToRAS)
+
+        greenSliceNode.UpdateMatrices()
+
 
     def alignAxesWithTrajectory(self, targetMarkupNode, EntryMarkupNode):
         import numpy as np
