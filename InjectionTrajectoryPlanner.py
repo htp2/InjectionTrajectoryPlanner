@@ -126,7 +126,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         #
         self.dir = os.path.dirname(__file__)
         self.outdir = self.dir+'/Output/'+datetime.now().strftime('%Y%m%d%H%M%S')
-        self.needle_filename = self.dir + '/Resources/meshes/50mm_18ga_needle.stl'
+        self.tool_mesh_filename = self.dir + '/Resources/meshes/50mm_18ga_needle.stl'
         self.test_volume_data_filename = self.dir + '/Resources/volumes/test_spine_segmentation.nrrd'
         self.test_ct_directory = self.dir + '/Resources/images/Case1 CT'  # input folder with DICOM files
 
@@ -191,30 +191,30 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         #	self.entry_ee = self.entry_transform_node*inv(self.hand_eye)
         #	self.target_ee = self.toolMeshModel.transform_node*inv(self.hand_eye)
 
-        needle_transform_name = 'needle'
-        self.toolMeshModel = sh.SlicerMeshModel(needle_transform_name, self.needle_filename)
-        print(self.toolMeshModel)
-        self.toolMeshModel.display_node.SetSliceIntersectionVisibility(True)
-        self.toolMeshModel.display_node.SetSliceDisplayModeToIntersection()
-        self.toolMeshModel.display_node.SetColor((255.0/255.0, 170.0/255.0, 0.0))  # Orange
-        self.toolMeshModel.mesh_model_node.SetHideFromEditors(1)
+        # needle_transform_name = 'needle'
+        # self.toolMeshModel = sh.SlicerMeshModel(needle_transform_name, self.tool_mesh_filename)
+        # print(self.toolMeshModel)
+        # self.toolMeshModel.display_node.SetSliceIntersectionVisibility(True)
+        # self.toolMeshModel.display_node.SetSliceDisplayModeToIntersection()
+        # self.toolMeshModel.display_node.SetColor((255.0/255.0, 170.0/255.0, 0.0))  # Orange
+        # self.toolMeshModel.mesh_model_node.SetHideFromEditors(1)
 
-        self.toolModelSelector = slicer.qMRMLNodeComboBox()
-        self.toolModelSelector.nodeTypes = ["vtkMRMLModelNode"]
-        self.toolModelSelector.selectNodeUponCreation = True
-        self.toolModelSelector.addEnabled = True
-        self.toolModelSelector.removeEnabled = True
-        self.toolModelSelector.noneEnabled = False
-        self.toolModelSelector.showHidden = False
-        self.toolModelSelector.showChildNodeTypes = False
-        self.toolModelSelector.setMRMLScene(slicer.mrmlScene)
-        self.toolModelSelector.setToolTip("Pick the tool model")
-        self.toolModelSelector.setCurrentNode(self.toolMeshModel.mesh_model_node)
-        parametersFormLayout.addRow("Tool Model: ", self.toolModelSelector)
+        # self.toolModelSelector = slicer.qMRMLNodeComboBox()
+        # self.toolModelSelector.nodeTypes = ["vtkMRMLModelNode"]
+        # self.toolModelSelector.selectNodeUponCreation = True
+        # self.toolModelSelector.addEnabled = True
+        # self.toolModelSelector.removeEnabled = True
+        # self.toolModelSelector.noneEnabled = False
+        # self.toolModelSelector.showHidden = False
+        # self.toolModelSelector.showChildNodeTypes = False
+        # self.toolModelSelector.setMRMLScene(slicer.mrmlScene)
+        # self.toolModelSelector.setToolTip("Pick the tool model")
+        # self.toolModelSelector.setCurrentNode(self.toolMeshModel.mesh_model_node)
+        # parametersFormLayout.addRow("Tool Model: ", self.toolModelSelector)
 
         """Trajectory Line"""
         # Call UpdateSphere whenever the fiducials are changed
-        self.selectedTraj = sh.SlicerTrajectoryModel(1)
+        self.selectedTraj = sh.SlicerTrajectoryModel(1, toolMeshFilename=self.tool_mesh_filename)
         self.addSelectedTrajObservers(self.selectedTraj)
         self.trajList = np.array([self.selectedTraj])
 
@@ -454,7 +454,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     def onAddTrajectoryButton(self):
         self.onSaveTrajectoryButton()  # Save the previous one, just to be safe
-        if self.trajSelector.count>  0:  # account for case when all traj deleted and add new one
+        if self.trajSelector.count > 0:  # account for case when all traj deleted and add new one
             self.onAlignAxesToASCButton()
 
         # for observer in self.SelectedTrajObservers:  # Get rid of selected observer
@@ -464,7 +464,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
         self.trajNumMax += 1
 
-        newTraj = sh.SlicerTrajectoryModel(self.trajNumMax)
+        newTraj = sh.SlicerTrajectoryModel(self.trajNumMax, toolMeshFilename=self.tool_mesh_filename)
         self.trajList = np.append(self.trajList, newTraj)
         self.trajSelector.addItem("Trajectory " + str(self.trajNumMax))
         self.trajSelector.setCurrentIndex(self.trajSelector.count-1)
@@ -497,7 +497,12 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             slicer.util.saveNode(traj.entryMarkupNode, trajoutdir+'/Entry.fcsv')
             slicer.util.saveNode(traj.targetMarkupNode, trajoutdir+'/Target.fcsv')
             slicer.util.saveNode(traj.lineModelNode, trajoutdir + '/line.vtk')
-            slicer.util.saveNode(self.toolMeshModel.transform_node, trajoutdir+'/toolTransform.h5')
+            if traj.hasTool_bool:
+                f = open(trajoutdir+'/model_filename.txt', "w+")
+                f.write(traj.toolMeshFilename)
+                f.close()
+
+                # slicer.util.saveNode(self.toolMeshModel.transform_node, trajoutdir+'/toolTransform.h5')
 
         print('Trajectories saved to ' + self.outdir)
 
@@ -510,9 +515,18 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             for traj_dir in dir_list:
                 epos = sh.get_markup_node_pos_from_fcsv(traj_dir + '/Entry.fcsv')
                 tpos = sh.get_markup_node_pos_from_fcsv(traj_dir + '/Target.fcsv')
+                model_filename_filename = traj_dir+'/model_filename.txt'
+                has_model = os.path.isfile(model_filename_filename)
+                if has_model:
+                    old_model_filename = self.tool_mesh_filename
+                    f = open(model_filename_filename, 'r')
+                    model_filename = f.readline()
+                    f.close()
                 # slicer.util.saveNode(traj.lineModelNode, trajoutdir + '/line.vtk')
                 # slicer.util.saveNode(self.toolMeshModel.transform_node, trajoutdir + '/toolTransform.h5')
                 self.onAddTrajectoryButton()
+                if has_model:  # switch back for new creations
+                    self.tool_mesh_filename = old_model_filename
                 self.selectedTraj.targetMarkupNode.SetNthFiducialPosition(0, tpos[0], tpos[1], tpos[2])
                 self.selectedTraj.entryMarkupNode.SetNthFiducialPosition(0, epos[0], epos[1], epos[2])
         else:
@@ -616,8 +630,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             entry_pos = np.array([0.0, 0.0, 0.0])
             target_pos = np.array([0.0, 0.0, 0.0])
             self.DATrajectoryMarkupNode.GetNthFiducialPosition(0, DAT_pos)
-            self.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
-            self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
+            self.selectedTraj.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
+            self.selectedTraj.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
 
             old_entry_to_DAT = (DAT_pos - entry_pos)
             norm_old_entry_to_DAT = np.linalg.norm(old_entry_to_DAT)
@@ -627,7 +641,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             new_DAT_pos = entry_pos + new_entry_to_DAT
             self.DATrajectoryMarkupNode.SetNthFiducialPosition(
                 0, new_DAT_pos[0], new_DAT_pos[1], new_DAT_pos[2])
-            self.logic.alignAxesWithTrajectory(self.DATrajectoryMarkupNode, self.entryMarkupNode)
+            self.logic.alignAxesWithTrajectory(self.DATrajectoryMarkupNode, self.selectedTraj.entryMarkupNode)
 
     def entryMarkupEndInteractionCallback(self, caller, event):
         if hasattr(self, 'downAxisBool') and self.downAxisBool:
@@ -635,8 +649,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             entry_pos = np.array([0.0, 0.0, 0.0])
             target_pos = np.array([0.0, 0.0, 0.0])
             self.DATrajectoryMarkupNode.GetNthFiducialPosition(0, DAT_pos)
-            self.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
-            self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
+            self.selectedTraj.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
+            self.selectedTraj.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
 
             old_target_to_DAT = (DAT_pos - target_pos)
             norm_old_target_to_DAT = np.linalg.norm(old_target_to_DAT)
@@ -646,7 +660,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             new_DAT_pos = target_pos + new_target_to_DAT
             self.DATrajectoryMarkupNode.SetNthFiducialPosition(
                 0, new_DAT_pos[0], new_DAT_pos[1], new_DAT_pos[2])
-            self.logic.alignAxesWithTrajectory(self.DATrajectoryMarkupNode, self.entryMarkupNode)
+            self.logic.alignAxesWithTrajectory(self.DATrajectoryMarkupNode, self.selectedTraj.entryMarkupNode)
 
     def redSliceModifiedCallback(self, caller, event):
         if hasattr(self, 'downAxisBool') and self.downAxisBool and \

@@ -193,6 +193,7 @@ class SlicerMeshModel:
         self.mesh_model_node.SetAndObserveTransformNodeID(self.transform_nodeID)
 
 
+
 class SlicerVolumeModel:
     """ Takes a volume (nrrd, perhaps others), imports it into Slicer as segment. Allows for voxel manipulation from np
     array """
@@ -221,8 +222,9 @@ class SlicerVolumeModel:
 class SlicerTrajectoryModel:
     """Makes a line object as a vtkMRMLModelNode"""
 
-    def __init__(self, trajNum, p_entry=np.array([0.0, 0.0, 0.0]), p_target=np.array([100.0, 100.0, 100.0])):
+    def __init__(self, trajNum, p_entry=np.array([0.0, 0.0, 0.0]), p_target=np.array([100.0, 100.0, 100.0]), toolMeshFilename=None):
         self.trajNum = trajNum
+        self.toolMeshFilename = toolMeshFilename
         self.hasTool_bool = False  # Future Expansion
         self.selected_bool = True
         self.line = vtk.vtkLineSource()
@@ -255,8 +257,20 @@ class SlicerTrajectoryModel:
                                           self.targetMarkupModifiedCallback)
         self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent,
                                          self.entryMarkupModifiedCallback)
+        if self.toolMeshFilename:
+            self.hasTool_bool = True
+            self.toolMeshModel = SlicerMeshModel('Tool'+str(self.trajNum), self.toolMeshFilename)
+            # print(self.toolMeshModel)
+            self.toolMeshModel.display_node.SetSliceIntersectionVisibility(True)
+            self.toolMeshModel.display_node.SetSliceDisplayModeToIntersection()
+            self.toolMeshModel.display_node.SetColor((255.0 / 255.0, 170.0 / 255.0, 0.0))  # Orange
+            self.toolMeshModel.mesh_model_node.SetHideFromEditors(1)
+
         self.targetMarkupNode.SetNthFiducialPosition(0, p_entry[0],  p_entry[1],  p_entry[2])
         self.entryMarkupNode.SetNthFiducialPosition(0, p_target[0], p_target[1], p_target[2])
+
+
+
         # self.targetMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
         #                                   self.targetMarkupEndInteractionCallback)
         # self.entryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
@@ -267,12 +281,16 @@ class SlicerTrajectoryModel:
         self.selected_bool = True
         self.targetMarkupNode.SetLocked(0)
         self.entryMarkupNode.SetLocked(0)
+        if self.hasTool_bool:
+            self.toolMeshModel.display_node.SetSliceIntersectionVisibility(True)
 
     def deselect(self):
         self.lineModelNode.GetDisplayNode().SetSliceIntersectionVisibility(False)
         self.selected_bool = False
         self.targetMarkupNode.SetLocked(1)
         self.entryMarkupNode.SetLocked(1)
+        if self.hasTool_bool:
+            self.toolMeshModel.display_node.SetSliceIntersectionVisibility(False)
 
     def targetMarkupModifiedCallback(self, caller, event):
         pos1 = [0.0, 0.0, 0.0]
@@ -291,10 +309,49 @@ class SlicerTrajectoryModel:
         if self.hasTool_bool:
             self.UpdateToolModel()
 
+    def UpdateTransforms(self):
+        pass
+        # entry_transform = np.eye(4)
+        # entry_transform[0:3, 0] = x_vec
+        # entry_transform[0:3, 1] = y_vec
+        # entry_transform[0:3, 2] = z_vec
+        # entry_transform[0:3, 3] = entry_pos
+        #
+        # sh.updateTransformMatrixFromArray(self.entry_transform_node, entry_transform)
+        #
+        # robot_ee_target_transform = np.matmul(np.linalg.inv(hand_eye_transform), transform)
+        # sh.updateTransformMatrixFromArray(self.robot_ee_target, robot_ee_target_transform)
+        #
+        # robot_ee_entry_transform = np.matmul(np.linalg.inv(hand_eye_transform), entry_transform)
+        # sh.updateTransformMatrixFromArray(self.robot_ee_entry, robot_ee_entry_transform)
+
+    def UpdateToolModel(self):
+        transform = np.eye(4)
+        target_pos = np.array([0.0, 0.0, 0.0])
+        entry_pos = np.array([0.0, 0.0, 0.0])
+        self.targetMarkupNode.GetNthFiducialPosition(0, target_pos)
+        self.entryMarkupNode.GetNthFiducialPosition(0, entry_pos)
+        traj_vec = target_pos - entry_pos
+        z_vec = traj_vec
+        x_vec = np.array([-z_vec[1], z_vec[0], 0])
+        y_vec = np.cross(z_vec, x_vec)
+        x_vec = x_vec / max(np.linalg.norm(x_vec), 1e-8)  # normalize, with protection against zero or nearzero vector
+        y_vec = y_vec / max(np.linalg.norm(y_vec), 1e-8)
+        z_vec = z_vec / max(np.linalg.norm(z_vec), 1e-8)
+
+        transform[0:3, 0] = x_vec
+        transform[0:3, 1] = y_vec
+        transform[0:3, 2] = z_vec
+        transform[0:3, 3] = target_pos
+        updateTransformMatrixFromArray(self.toolMeshModel.transform_node, transform)
+
     def deleteNodes(self):
         slicer.mrmlScene.RemoveNode(self.lineModelNode)
         slicer.mrmlScene.RemoveNode(self.targetMarkupNode)
         slicer.mrmlScene.RemoveNode(self.entryMarkupNode)
+        if self.hasTool_bool:  # TODO consolidate into one method in toolMeshModel
+            slicer.mrmlScene.RemoveNode(self.toolMeshModel.mesh_model_node)
+            slicer.mrmlScene.RemoveNode(self.toolMeshModel.transform_node)
 
 # class SlicerDrillTip:
 #     def __init__(self, volume_model, radius):
