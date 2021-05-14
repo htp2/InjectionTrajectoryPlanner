@@ -36,6 +36,7 @@ import slicer
 import vtk
 import time
 import numpy as np
+import os
 
 """The following block of functions are from slicer.util, but are not included in the current 4.10 code base. 
 They are quite helpful so I am housing them here until they are returned to the main code
@@ -171,7 +172,28 @@ def get_markup_node_pos_from_fcsv(filename):
     pos = np.array([float(data[1]), float(data[2]), float(data[3])])
     return pos
 
+def copy_fcsv_to_new_line(name, write_file):
+    f = open(name, 'r')
+    f.readline()
+    f.readline()
+    f.readline()
+    data = f.readline()
+    data = data.split(',')
+    data = data[1:]
+    newline = 'vtkMRMLMarkupsFiducialNode_1,' + ','.join(data)
+    write_file.write(newline)
+    f.close()
 
+def collapse_traj_markups_to_single_fcsv(data_dir,new_name):
+    dir_list = [x[0] for x in os.walk(data_dir)]
+    if len(dir_list) > 1:
+        dir_list = dir_list[1:]  # skip 0th (self) entry if a dir of dirs  # TODO: could clean up implementation
+    f_write = open(data_dir + '/' + new_name + '.fcsv', 'w')
+    f_write.write('# Markups fiducial file version = 4.10 \n# CoordinateSystem = 0\n# columns = id,x,y,z,ow,ox,oy,oz,vis,sel,lock,label,desc,associatedNodeID\n')
+    for traj_dir in dir_list:
+        copy_fcsv_to_new_line(traj_dir + '/Entry.fcsv', f_write)
+        copy_fcsv_to_new_line(traj_dir + '/Target.fcsv', f_write)
+    f_write.close()
 
 
 class SlicerMeshModel:
@@ -266,8 +288,8 @@ class SlicerTrajectoryModel:
             self.toolMeshModel.display_node.SetColor((255.0 / 255.0, 170.0 / 255.0, 0.0))  # Orange
             self.toolMeshModel.mesh_model_node.SetHideFromEditors(1)
 
-        self.targetMarkupNode.SetNthFiducialPosition(0, p_entry[0],  p_entry[1],  p_entry[2])
-        self.entryMarkupNode.SetNthFiducialPosition(0, p_target[0], p_target[1], p_target[2])
+        self.entryMarkupNode.SetNthFiducialPosition(0, p_entry[0],  p_entry[1],  p_entry[2])
+        self.targetMarkupNode.SetNthFiducialPosition(0, p_target[0], p_target[1], p_target[2])
 
 
 

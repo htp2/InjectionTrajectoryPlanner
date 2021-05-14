@@ -15,7 +15,8 @@ import os
 
 # InjectionTrajectoryPlanner
 #
-
+###TODO OBLIQUE VIEWS ARE DAT BUT UPDATES IN RT AND REVERTS WHEN YOU LET GO
+###TODO ADD CLEAN OUTPUT WHERE ALL IN ONE MARKUPS LIST
 class InjectionTrajectoryPlanner(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
@@ -23,7 +24,7 @@ class InjectionTrajectoryPlanner(ScriptedLoadableModule):
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = "InjectionTrajectoryPlanner"  # TODO make this more human readable by adding spaces
+        self.parent.title = "Injection Trajectory Planner" 
         self.parent.categories = ["SpineRobot"]
         self.parent.dependencies = []
         self.parent.contributors = [
@@ -125,10 +126,11 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         # input volume selector
         #
         self.dir = os.path.dirname(__file__)
-        self.outdir = self.dir+'/Output/'+datetime.now().strftime('%Y%m%d%H%M%S')
+        self.session_timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        self.outdir = self.dir + '/Output/' + self.session_timestamp
         self.tool_mesh_filename = self.dir + '/Resources/meshes/50mm_18ga_needle.stl'
-        self.test_volume_data_filename = self.dir + '/Resources/volumes/test_spine_segmentation.nrrd'
-        self.test_ct_directory = self.dir + '/Resources/images/Case1 CT'  # input folder with DICOM files
+        self.test_volume_data_filename = self.dir + '/Resources/volumes/Segmentation.seg.nrrd'
+        self.test_ct_directory = self.dir + '/Resources/images/1.2.392.200036.9116.2.6.1.37.2420774107.1615413984.2842/1.2.392.200036.9116.2.6.1.37.2420774107.1615414312.583653/'  # input folder with DICOM files
 
         """Tool Model Markup & Selector"""
         self.entry_transform_node = slicer.vtkMRMLTransformNode()
@@ -224,6 +226,9 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         # self.addTrajFromFileButton.enabled = True
         self.loadTrajLayout.addWidget(self.addTrajFromFileButton)
         parametersFormLayout.addRow("Add Trajectories from Folder: ", self.loadTrajLayout)
+
+        self.deleteAllButton = qt.QPushButton("Delete All Trajectories")
+        parametersFormLayout.addRow(self.deleteAllButton)
 
         """Toggle Slice Visualization Button [TODO:Separate to 3]"""
         self.toggleSliceVisibilityButtonLayout = qt.QHBoxLayout()
@@ -388,6 +393,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.toggleYellowSliceVisibilityButton.connect('clicked(bool)', self.onToggleYellowSliceVisibilityButton)
         self.toggleGreenSliceVisibilityButton.connect('clicked(bool)', self.onToggleGreenSliceVisibilityButton)
 
+        self.deleteAllButton.connect('clicked(bool)', self.onDeleteAllButton)
+
         # Add vertical spacer
         self.layout.addStretch(1)
 
@@ -396,12 +403,22 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     def onAddTrajectoryButton(self):
         self.onSaveTrajectoryButton()  # Save the previous one, just to be safe
-        if self.trajSelector.count > 0:  # account for case when all traj deleted and add new one
+	ep = np.array([100.0,100.0,100.0])
+        tp = np.array([0.0,0.0,0.0])
+	if self.trajSelector.count > 0:  # account for case when all traj deleted and add new one
             self.onAlignAxesToASCButton()
+            if self.selectedTraj:
+                old_ep = [0.0,0.0,0.0]
+                old_tp = [0.0,0.0,0.0]
+                self.selectedTraj.entryMarkupNode.GetNthFiducialPosition(0, old_ep)
+                self.selectedTraj.targetMarkupNode.GetNthFiducialPosition(0, old_tp)
+                ep = old_ep + np.array([5.0,5.0,5.0])
+                tp = old_tp + np.array([5.0,5.0,5.0])
+
 
         self.trajNumMax += 1
 
-        newTraj = sh.SlicerTrajectoryModel(self.trajNumMax, toolMeshFilename=self.tool_mesh_filename)
+        newTraj = sh.SlicerTrajectoryModel(self.trajNumMax, toolMeshFilename=self.tool_mesh_filename,p_entry=np.array(ep), p_target=np.array(tp))
         self.trajList = np.append(self.trajList, newTraj)
         self.trajSelector.addItem("Trajectory " + str(self.trajNumMax))
         self.trajSelector.setCurrentIndex(self.trajSelector.count-1)
@@ -415,6 +432,14 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             self.trajList = np.delete(self.trajList, del_index)
             self.selectedTraj = None
             self.trajSelector.removeItem(del_index)
+
+    def onDeleteAllButton(self):
+        for _ in range(self.trajSelector.count):
+            self.onDeleteTrajectoryButton()
+        self.outdir = self.dir+'/Output/'+datetime.now().strftime('%Y%m%d%H%M%S')
+        self.trajNumMax = 0
+            
+
 
     def onSaveTrajectoryButton(self):
         if not os.path.exists(self.outdir):
@@ -431,17 +456,20 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
                 f = open(trajoutdir+'/model_filename.txt', "w+")
                 f.write(traj.toolMeshFilename)
                 f.close()
-
-                # slicer.util.saveNode(self.toolMeshModel.transform_node, trajoutdir+'/toolTransform.h5')
-
+        # Save all to single markups for ease of post-processing        
+        sh.collapse_traj_markups_to_single_fcsv(self.outdir, self.session_timestamp + "_all_traj")
         print('Trajectories saved to ' + self.outdir)
 
-    def onAddTrajFromFileButton(self):  ## TODO FINISH ADD TRAJ FROM FILE
+    def onAddTrajFromFileButton(self):
         if self.inputDirSelector.currentPath:
             ## Read file
             dir_list = [x[0] for x in os.walk(self.inputDirSelector.currentPath)]
             if len(dir_list) > 1:
                 dir_list = dir_list[1:]  # skip 0th (self) entry if a dir of dirs  # TODO: could clean up implementation
+            # traj_dir_nums = []
+            # for traj_dir in dir_list:
+            #     traj_dir_nums.append( int(traj_dir.split('_')[-1]) )
+
             for traj_dir in dir_list:
                 epos = sh.get_markup_node_pos_from_fcsv(traj_dir + '/Entry.fcsv')
                 tpos = sh.get_markup_node_pos_from_fcsv(traj_dir + '/Target.fcsv')
@@ -515,10 +543,10 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         logic.resetAxesToASC(self.selectedTraj.targetMarkupNode)
         self.onJumpToTargetButton()  # return crosshair to target point
 
-        layoutManager = slicer.app.layoutManager()
-        threeDWidget = layoutManager.threeDWidget(0)
-        threeDView = threeDWidget.threeDView()
-        threeDView.resetFocalPoint()
+        #layoutManager = slicer.app.layoutManager()
+        #threeDWidget = layoutManager.threeDWidget(0)
+        #threeDView = threeDWidget.threeDView()
+        #threeDView.resetFocalPoint()
         if hasattr(self, 'downAxisBool') and self.downAxisBool:
             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
         self.downAxisBool = False
@@ -538,7 +566,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     def targetMarkupModifiedCallback(self, caller, event):
         pass
     #     pos1 = [0.0, 0.0, 0.0]
-    #     self.targetMarkupNode.GetNthFiducialPosition(0, pos1)
+    #     self.targetMarkupNode.FiducialPosition(0,GetNth pos1)
     #     self.selectedTraj.line.SetPoint1(pos1)
     #     self.selectedTraj.line.Update()
     #     self.UpdateToolModel()
@@ -551,8 +579,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     #     self.selectedTraj.line.Update()
     #     self.UpdateToolModel()
 
-###TODO OBLIQUE VIEWS ARE DAT BUT UPDATES IN RT AND REVERTS WHEN YOU LET GO
-###TODO ADD CLEAN OUTPUT WHERE ALL IN ONE MARKUPS LIST
 
     def targetMarkupEndInteractionCallback(self, caller, event):
         if hasattr(self, 'downAxisBool') and self.downAxisBool:
@@ -706,6 +732,9 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
 
     def addTestData(self, test_volume_data_filename, test_ct_directory):
         """ Load volume data  """
+
+        print test_volume_data_filename
+        print test_ct_directory
         _, label_volumeNode = slicer.util.loadLabelVolume(test_volume_data_filename, returnNode=True)
 
         # This is adapted from https://www.slicer.org/wiki/Documentation/4.3/Modules/VolumeRendering
