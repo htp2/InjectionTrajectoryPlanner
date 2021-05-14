@@ -187,6 +187,7 @@ def copy_fcsv_to_new_line(name, write_file):
 def collapse_traj_markups_to_single_fcsv(data_dir,new_name):
     dir_list = [x[0] for x in os.walk(data_dir)]
     if len(dir_list) > 1:
+        print(dir_list)
         dir_list = dir_list[1:]  # skip 0th (self) entry if a dir of dirs  # TODO: could clean up implementation
     f_write = open(data_dir + '/' + new_name + '.fcsv', 'w')
     f_write.write('# Markups fiducial file version = 4.10 \n# CoordinateSystem = 0\n# columns = id,x,y,z,ow,ox,oy,oz,vis,sel,lock,label,desc,associatedNodeID\n')

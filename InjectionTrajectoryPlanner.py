@@ -15,8 +15,6 @@ import os
 
 # InjectionTrajectoryPlanner
 #
-###TODO OBLIQUE VIEWS ARE DAT BUT UPDATES IN RT AND REVERTS WHEN YOU LET GO
-###TODO ADD CLEAN OUTPUT WHERE ALL IN ONE MARKUPS LIST
 class InjectionTrajectoryPlanner(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
@@ -25,17 +23,16 @@ class InjectionTrajectoryPlanner(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "Injection Trajectory Planner" 
-        self.parent.categories = ["SpineRobot"]
+        self.parent.categories = []
         self.parent.dependencies = []
-        self.parent.contributors = [
-            "Henry Phalen (Johns Hopkins University)"]  # replace with "Firstname Lastname (Organization)"
+        self.parent.contributors = ["Henry Phalen (Johns Hopkins University)"] 
         self.parent.helpText = """
-This module can be used to plan injection trajectories.
+This module can be used to plan injection trajectories on 3D volumes / images.
 """
         self.parent.helpText += self.getDefaultModuleDocumentationLink()
         self.parent.acknowledgementText = """
-This file was originally developed by Henry Phalen, a PhD student at Johns Hopkins University.
-"""  # replace with organization, grant and thanks.
+This file was developed by Henry Phalen, a PhD student at Johns Hopkins University.
+"""
 
 
 def setSlicePoseFromSliceNormalAndPosition(sliceNode, sliceNormal, slicePosition, defaultViewUpDirection=None,
@@ -86,18 +83,26 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
+        self.dir = os.path.dirname(__file__)
 
-        # Instantiate and connect widgets ...
+        # Parameters (filenames) end user may want to edit
+        self.tool_mesh_filename = self.dir + '/Resources/meshes/50mm_18ga_needle.stl'
+        self.test_volume_data_filename = self.dir + '/Resources/volumes/[InsertTestVolumeHere].seg.nrrd'
+        self.test_ct_directory = self.dir + '/Resources/images/[InsertTestDICOMDirHere]/'  # input folder with DICOM files
 
-        #
-        # Parameters Area
-        #
+        
+        # Initialize Useful Parameters
         self.logic = InjectionTrajectoryPlannerLogic()
         self.redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
         self.lastRedSliceOffset = self.redSliceNode.GetSliceOffset()
         self.trajNumMax = 1  # Need to keep track of this so we can name new trajectories correctly
+        self.session_timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        self.outdir = self.dir + '/Output/' + self.session_timestamp
+        self.downAxisBool = False # keeps track of whether in DAT mode or not
+        self.lastDATFromProjection = False  # TODO: This flag implementation could be improved
+        self.num_DAT_screens = 1  # For future exapansion (TODO)
 
-
+        # Setup main layout tabs (collapsible buttons)
         actionsCollapsibleButton = ctk.ctkCollapsibleButton()
         actionsCollapsibleButton.text = "Actions"
         self.layout.addWidget(actionsCollapsibleButton)
@@ -113,90 +118,39 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.layout.addWidget(slicevizCollapsibleButton)
         slicevizFormLayout = qt.QFormLayout(slicevizCollapsibleButton)
 
-
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
         parametersCollapsibleButton.text = "Parameters"
         self.layout.addWidget(parametersCollapsibleButton)
         parametersCollapsibleButton.setChecked(False)  # closes by default
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
-
-
-        #
-        # input volume selector
-        #
-        self.dir = os.path.dirname(__file__)
-        self.session_timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        self.outdir = self.dir + '/Output/' + self.session_timestamp
-        self.tool_mesh_filename = self.dir + '/Resources/meshes/50mm_18ga_needle.stl'
-        self.test_volume_data_filename = self.dir + '/Resources/volumes/Segmentation.seg.nrrd'
-        self.test_ct_directory = self.dir + '/Resources/images/1.2.392.200036.9116.2.6.1.37.2420774107.1615413984.2842/1.2.392.200036.9116.2.6.1.37.2420774107.1615414312.583653/'  # input folder with DICOM files
-
-        """Tool Model Markup & Selector"""
+        
+        """Tool Model Markup & Selector""" # TODO Add option in Parameters to change tool model
         self.entry_transform_node = slicer.vtkMRMLTransformNode()
         self.entry_transform_node.SetName('needle_entry')
         slicer.mrmlScene.AddNode(self.entry_transform_node)
 
-        self.hand_eye_node = slicer.vtkMRMLTransformNode()
-        self.hand_eye_node.SetName('hand_eye')
-        slicer.mrmlScene.AddNode(self.hand_eye_node)
-
-        self.robot_ee_entry = slicer.vtkMRMLTransformNode()
-        self.robot_ee_entry.SetName('robot_ee_entry')
-        slicer.mrmlScene.AddNode(self.robot_ee_entry)
-
-        self.robot_ee_target = slicer.vtkMRMLTransformNode()
-        self.robot_ee_target.SetName('robot_ee_target')
-        slicer.mrmlScene.AddNode(self.robot_ee_target)
-        #	self.entry_ee = self.entry_transform_node*inv(self.hand_eye)
-        #	self.target_ee = self.toolMeshModel.transform_node*inv(self.hand_eye)
-
-        # needle_transform_name = 'needle'
-        # self.toolMeshModel = sh.SlicerMeshModel(needle_transform_name, self.tool_mesh_filename)
-        # print(self.toolMeshModel)
-        # self.toolMeshModel.display_node.SetSliceIntersectionVisibility(True)
-        # self.toolMeshModel.display_node.SetSliceDisplayModeToIntersection()
-        # self.toolMeshModel.display_node.SetColor((255.0/255.0, 170.0/255.0, 0.0))  # Orange
-        # self.toolMeshModel.mesh_model_node.SetHideFromEditors(1)
-
-        # self.toolModelSelector = slicer.qMRMLNodeComboBox()
-        # self.toolModelSelector.nodeTypes = ["vtkMRMLModelNode"]
-        # self.toolModelSelector.selectNodeUponCreation = True
-        # self.toolModelSelector.addEnabled = True
-        # self.toolModelSelector.removeEnabled = True
-        # self.toolModelSelector.noneEnabled = False
-        # self.toolModelSelector.showHidden = False
-        # self.toolModelSelector.showChildNodeTypes = False
-        # self.toolModelSelector.setMRMLScene(slicer.mrmlScene)
-        # self.toolModelSelector.setToolTip("Pick the tool model")
-        # self.toolModelSelector.setCurrentNode(self.toolMeshModel.mesh_model_node)
-        # parametersFormLayout.addRow("Tool Model: ", self.toolModelSelector)
-
         """Trajectory Line"""
-        # Call UpdateSphere whenever the fiducials are changed
+        # Calls UpdateSphere whenever the fiducials are changed
         self.selectedTraj = sh.SlicerTrajectoryModel(1, toolMeshFilename=self.tool_mesh_filename)
         self.addSelectedTrajObservers(self.selectedTraj)
         self.trajList = np.array([self.selectedTraj])
 
-        self.downAxisBool = False
-        self.lastDATFromProjection = False  # TODO: Make this less terrible
-        # down-axis trajectory markup node
-        self.num_DAT_screens = 1
+        # Setup down-axis-trajectory view behavior
         self.DATrajectoryMarkupNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
         self.DATrajectoryMarkupNode.SetName('Trajectory')
         self.DATrajectoryFiducialIDs = []
-        for i in range(self.num_DAT_screens):
-            slicer.modules.markups.logic().AddFiducial()  # TODO: Multiple screens handled by different 'n's
-            self.DATrajectoryMarkupNode.SetNthFiducialLabel(i, "Trajectory")
+        for i in range(self.num_DAT_screens): # Just one for now TODO: Multiple (e.g. interpolated) screens handled by different 'n's
+            slicer.modules.markups.logic().AddFiducial()  
+            self.DATrajectoryMarkupNode.SetNthFiducialLabel(i, "Trajectory")  # This point will the down-axis view and trajectory intersection 
             # each markup is given a unique id which can be accessed from the superclass level
             self.DATrajectoryFiducialIDs.append(self.DATrajectoryMarkupNode.GetNthMarkupID(i))
             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(i, False)
-        # self.DATrajectoryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
-        #                                         self.downAxisPointCallback)
         self.redSliceNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.redSliceModifiedCallback)
         self.DATrajectoryMarkupNode.AddObserver(slicer.vtkMRMLMarkupsNode.PointEndInteractionEvent,
                                                 self.DATPointEndInteractionCallback)
 
+        # Parameter Layout Buttons
         """Toggle Slice Intersections Button"""
         self.toggleSliceIntersectionButton = qt.QPushButton("Toggle Slice Intersections")
         self.toggleSliceIntersectionButton.toolTip = "Turn on / off colored lines representing slice planes"
@@ -214,22 +168,18 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
 
         """Add Trajectories from File Button"""
         self.loadTrajLayout = qt.QHBoxLayout()
-
         self.inputDirSelector = ctk.ctkPathLineEdit()
         self.inputDirSelector.filters = ctk.ctkPathLineEdit.Dirs
         self.inputDirSelector.toolTip = "Add previously generated trajectories from an output file"
         self.loadTrajLayout.addWidget(self.inputDirSelector)
-
-
         self.addTrajFromFileButton = qt.QPushButton("Load")
         self.addTrajFromFileButton.toolTip = "Add previously generated trajectories from an output file"
-        # self.addTrajFromFileButton.enabled = True
         self.loadTrajLayout.addWidget(self.addTrajFromFileButton)
         parametersFormLayout.addRow("Add Trajectories from Folder: ", self.loadTrajLayout)
-
         self.deleteAllButton = qt.QPushButton("Delete All Trajectories")
         parametersFormLayout.addRow(self.deleteAllButton)
 
+        # Visualization Layout Buttons
         """Toggle Slice Visualization Button [TODO:Separate to 3]"""
         self.toggleSliceVisibilityButtonLayout = qt.QHBoxLayout()
         self.toggleRedSliceVisibilityButton = qt.QPushButton("RED")
@@ -243,6 +193,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.toggleSliceVisibilityButtonLayout.addWidget(self.toggleGreenSliceVisibilityButton)
         slicevizFormLayout.addRow(self.toggleSliceVisibilityButtonLayout)
 
+        # Actions Layout Buttons        
         """Instruction Text"""
         x = qt.QLabel()
         x.setText("Helpful Controls:\n"
@@ -259,9 +210,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.trajSelector = qt.QComboBox()
         self.trajSelector.addItem("Trajectory 1")
         self.trajSelector.currentIndexChanged.connect(self.onTrajSelectionChange)
-
         actionsFormLayout.addRow("Select Trajectory to Edit: ", self.trajSelector)
-
 
         """Add Trajectory Button"""
         self.addTrajectoryButton = qt.QPushButton("Add New Trajectory")
@@ -290,7 +239,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.moveTargetToIntersectionButton.setIcon(setTargetIcon)
         self.moveTargetToIntersectionButton.setIconSize(qt.QSize(50,50))
         self.movePointsButtonLayout.addWidget(self.moveTargetToIntersectionButton)
-
 
         """Set Entry Point Button"""
         self.moveEntryToIntersectionButton = qt.QPushButton("CHANGE Entry Point")
@@ -366,33 +314,28 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         vizFormLayout.addRow(self.sliceVizButtonsLayout)
 
         self.crosshairNode = slicer.util.getNode('Crosshair')  # Make sure exists
-        self.crosshairPos = self.crosshairNode.SetCrosshairRAS(0, 0, 0)
+        self.crosshairPos = self.crosshairNode.SetCrosshairRAS(0, 0, 0) # center the view
 
-
-        # connections
-        self.addTrajectoryButton.connect('clicked(bool)', self.onAddTrajectoryButton)
-        self.deleteTrajectoryButton.connect('clicked(bool)', self.onDeleteTrajectoryButton)
-
-        self.saveTrajectoryButton.connect('clicked(bool)', self.onSaveTrajectoryButton)
-
-        self.addTestDataButton.connect('clicked(bool)', self.onAddTestDataButton)
-        self.toggleSliceIntersectionButton.connect('clicked(bool)', self.onToggleSliceIntersectionButton)
-
+        # Connect buttons to callbacks
         self.moveTargetToIntersectionButton.connect('clicked(bool)', self.onMoveTargetToIntersectionButton)
         self.moveEntryToIntersectionButton.connect('clicked(bool)', self.onMoveEntryToIntersectionButton)
-
         self.jumpToTargetButton.connect('clicked(bool)', self.onJumpToTargetButton)
         self.jumpToEntryButton.connect('clicked(bool)', self.onJumpToEntryButton)
 
         self.alignAxesToTrajectoryButton.connect('clicked(bool)', self.onAlignAxesToTrajectoryButton)
         self.alignAxesToASCButton.connect('clicked(bool)', self.onAlignAxesToASCButton)
 
-        self.addTrajFromFileButton.connect('clicked(bool)', self.onAddTrajFromFileButton)
-
         self.toggleRedSliceVisibilityButton.connect('clicked(bool)', self.onToggleRedSliceVisibilityButton)
         self.toggleYellowSliceVisibilityButton.connect('clicked(bool)', self.onToggleYellowSliceVisibilityButton)
         self.toggleGreenSliceVisibilityButton.connect('clicked(bool)', self.onToggleGreenSliceVisibilityButton)
 
+        self.addTrajectoryButton.connect('clicked(bool)', self.onAddTrajectoryButton)
+        self.deleteTrajectoryButton.connect('clicked(bool)', self.onDeleteTrajectoryButton)
+        self.saveTrajectoryButton.connect('clicked(bool)', self.onSaveTrajectoryButton)
+
+        self.addTestDataButton.connect('clicked(bool)', self.onAddTestDataButton)
+        self.toggleSliceIntersectionButton.connect('clicked(bool)', self.onToggleSliceIntersectionButton)
+        self.addTrajFromFileButton.connect('clicked(bool)', self.onAddTrajFromFileButton)
         self.deleteAllButton.connect('clicked(bool)', self.onDeleteAllButton)
 
         # Add vertical spacer
@@ -402,10 +345,9 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         pass
 
     def onAddTrajectoryButton(self):
-        self.onSaveTrajectoryButton()  # Save the previous one, just to be safe
-	ep = np.array([100.0,100.0,100.0])
+        ep = np.array([100.0,100.0,100.0])
         tp = np.array([0.0,0.0,0.0])
-	if self.trajSelector.count > 0:  # account for case when all traj deleted and add new one
+        if self.trajSelector.count > 0:  # account for case when all traj deleted and add new one
             self.onAlignAxesToASCButton()
             if self.selectedTraj:
                 old_ep = [0.0,0.0,0.0]
@@ -414,10 +356,8 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
                 self.selectedTraj.targetMarkupNode.GetNthFiducialPosition(0, old_tp)
                 ep = old_ep + np.array([5.0,5.0,5.0])
                 tp = old_tp + np.array([5.0,5.0,5.0])
-
-
+      
         self.trajNumMax += 1
-
         newTraj = sh.SlicerTrajectoryModel(self.trajNumMax, toolMeshFilename=self.tool_mesh_filename,p_entry=np.array(ep), p_target=np.array(tp))
         self.trajList = np.append(self.trajList, newTraj)
         self.trajSelector.addItem("Trajectory " + str(self.trajNumMax))
@@ -426,8 +366,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
     def onDeleteTrajectoryButton(self):
         if self.trajSelector.count:  # don't do anything if no trajectories
             del_index = self.trajSelector.currentIndex
-            # for observer in self.SelectedTrajObservers:  # Get rid of selected observer
-            #     slicer.mrmlScene.RemoveObserver(observer)
             self.trajList[del_index].deleteNodes()
             self.trajList = np.delete(self.trajList, del_index)
             self.selectedTraj = None
@@ -439,8 +377,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         self.outdir = self.dir+'/Output/'+datetime.now().strftime('%Y%m%d%H%M%S')
         self.trajNumMax = 0
             
-
-
     def onSaveTrajectoryButton(self):
         if not os.path.exists(self.outdir):
             os.makedirs(self.outdir)
@@ -464,11 +400,9 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         if self.inputDirSelector.currentPath:
             ## Read file
             dir_list = [x[0] for x in os.walk(self.inputDirSelector.currentPath)]
+            print(dir_list)
             if len(dir_list) > 1:
                 dir_list = dir_list[1:]  # skip 0th (self) entry if a dir of dirs  # TODO: could clean up implementation
-            # traj_dir_nums = []
-            # for traj_dir in dir_list:
-            #     traj_dir_nums.append( int(traj_dir.split('_')[-1]) )
 
             for traj_dir in dir_list:
                 epos = sh.get_markup_node_pos_from_fcsv(traj_dir + '/Entry.fcsv')
@@ -480,8 +414,7 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
                     f = open(model_filename_filename, 'r')
                     model_filename = f.readline()
                     f.close()
-                # slicer.util.saveNode(traj.lineModelNode, trajoutdir + '/line.vtk')
-                # slicer.util.saveNode(self.toolMeshModel.transform_node, trajoutdir + '/toolTransform.h5')
+
                 self.onAddTrajectoryButton()
                 if has_model:  # switch back for new creations
                     self.tool_mesh_filename = old_model_filename
@@ -531,7 +464,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         logic = InjectionTrajectoryPlannerLogic()
         logic.alignAxesWithTrajectory(self.selectedTraj.targetMarkupNode, self.selectedTraj.entryMarkupNode)
         self.onJumpToTargetButton()  # return crosshair to target point
-
         layoutManager = slicer.app.layoutManager()
         threeDWidget = layoutManager.threeDWidget(0)
         threeDView = threeDWidget.threeDView()
@@ -542,11 +474,6 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
         logic = InjectionTrajectoryPlannerLogic()
         logic.resetAxesToASC(self.selectedTraj.targetMarkupNode)
         self.onJumpToTargetButton()  # return crosshair to target point
-
-        #layoutManager = slicer.app.layoutManager()
-        #threeDWidget = layoutManager.threeDWidget(0)
-        #threeDView = threeDWidget.threeDView()
-        #threeDView.resetFocalPoint()
         if hasattr(self, 'downAxisBool') and self.downAxisBool:
             self.DATrajectoryMarkupNode.SetNthFiducialVisibility(0, False)
         self.downAxisBool = False
@@ -563,22 +490,14 @@ class InjectionTrajectoryPlannerWidget(ScriptedLoadableModuleWidget):
             self.selectedTraj.select()
             self.onJumpToTargetButton()
 
+    #TODO Cleanup callbacks
     def targetMarkupModifiedCallback(self, caller, event):
         pass
-    #     pos1 = [0.0, 0.0, 0.0]
-    #     self.targetMarkupNode.FiducialPosition(0,GetNth pos1)
-    #     self.selectedTraj.line.SetPoint1(pos1)
-    #     self.selectedTraj.line.Update()
-    #     self.UpdateToolModel()
-    #
+        # Implementation passed into SlicerTrajectoryModel in slicer_helper
+
     def entryMarkupModifiedCallback(self, caller, event):
         pass
-    #     pos2 = [0.0, 0.0, 0.0]
-    #     self.entryMarkupNode.GetNthFiducialPosition(0, pos2)
-    #     self.selectedTraj.line.SetPoint2(pos2)
-    #     self.selectedTraj.line.Update()
-    #     self.UpdateToolModel()
-
+        # Implementation passed into SlicerTrajectoryModel in slicer_helper
 
     def targetMarkupEndInteractionCallback(self, caller, event):
         if hasattr(self, 'downAxisBool') and self.downAxisBool:
@@ -733,8 +652,8 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
     def addTestData(self, test_volume_data_filename, test_ct_directory):
         """ Load volume data  """
 
-        print test_volume_data_filename
-        print test_ct_directory
+        print(test_volume_data_filename)
+        print(test_ct_directory)
         _, label_volumeNode = slicer.util.loadLabelVolume(test_volume_data_filename, returnNode=True)
 
         # This is adapted from https://www.slicer.org/wiki/Documentation/4.3/Modules/VolumeRendering
@@ -753,7 +672,6 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
             DICOMUtils.importDicom(test_ct_directory, db)
             patientUID = db.patients()[0]
             DICOMUtils.loadPatientByUID(patientUID)
-        # voxel_array = slicer.util.arrayFromVolume(label_volumeNode)
 
         # Resets focal point (pink wireframe bounding box) to center of scene
         layoutManager = slicer.app.layoutManager()
@@ -774,13 +692,11 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
                 controller.setSliceVisible(int(not controller.sliceLogic().GetSliceNode().GetSliceVisible()))
 
     def moveTargetToIntersectionButton(self, targetMarkupNode):
-        # layoutManager = slicer.app.layoutManager()
         crosshairNode = slicer.util.getNode('Crosshair')
         crosshairPos = crosshairNode.GetCrosshairRAS()
         targetMarkupNode.SetNthFiducialPosition(0, crosshairPos[0], crosshairPos[1], crosshairPos[2])
 
     def moveEntryToIntersectionButton(self, EntryMarkupNode):
-        # layoutManager = slicer.app.layoutManager()
         crosshairNode = slicer.util.getNode('Crosshair')
         crosshairPos = crosshairNode.GetCrosshairRAS()
         EntryMarkupNode.SetNthFiducialPosition(0, crosshairPos[0], crosshairPos[1], crosshairPos[2])
@@ -794,7 +710,6 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
             sliceNode.JumpSlice(pos[0], pos[1], pos[2])
 
     def alignAxesWithTrajectory(self, targetMarkupNode, EntryMarkupNode):
-        import numpy as np
 
         redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
         yellowSliceNode = slicer.util.getNode('vtkMRMLSliceNodeYellow')
@@ -819,9 +734,6 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         swap_yellow.SetElement(1, 2, 1)
         swap_yellow.SetElement(2, 2, 0)
         vtk.vtkMatrix4x4().Multiply4x4(redSliceToRAS, swap_yellow, yellowSliceToRAS)
-        # yellowSliceToRAS.SetElement(0, 3, p_target[0])
-        # yellowSliceToRAS.SetElement(1, 3, p_target[1])
-        # yellowSliceToRAS.SetElement(2, 3, p_target[2])
         yellowSliceNode.UpdateMatrices()
 
         swap_green = vtk.vtkMatrix4x4()
@@ -832,14 +744,9 @@ class InjectionTrajectoryPlannerLogic(ScriptedLoadableModuleLogic):
         swap_green.SetElement(0, 2, -1)
         swap_green.SetElement(2, 2, 0)
         vtk.vtkMatrix4x4().Multiply4x4(redSliceToRAS, swap_green, greenSliceToRAS)
-        # greenSliceToRAS.SetElement(0, 3, p_target[0])
-        # greenSliceToRAS.SetElement(1, 3, p_target[1])
-        # greenSliceToRAS.SetElement(2, 3, p_target[2])
-
         greenSliceNode.UpdateMatrices()
 
     def resetAxesToASC(self, targetMarkupNode):
-        import numpy as np
         redSliceNode = slicer.util.getNode('vtkMRMLSliceNodeRed')
         yellowSliceNode = slicer.util.getNode('vtkMRMLSliceNodeYellow')
         greenSliceNode = slicer.util.getNode('vtkMRMLSliceNodeGreen')
@@ -858,28 +765,13 @@ class InjectionTrajectoryPlannerTest(ScriptedLoadableModuleTest):
   """
 
     def setUp(self):
-        """ Do whatever is needed to reset the state - typically a scene clear will be enough.
-    """
         slicer.mrmlScene.Clear(0)
 
     def runTest(self):
-        """Run as few or as many tests as needed here.
-    """
         self.setUp()
         self.test_InjectionTrajectoryPlanner1()
 
     def test_InjectionTrajectoryPlanner1(self):
-        """ Ideally you should have several levels of tests.  At the lowest level
-    tests should exercise the functionality of the logic with different inputs
-    (both valid and invalid).  At higher levels your tests should emulate the
-    way the user would interact with your code and confirm that it still works
-    the way you intended.
-    One of the most important features of the tests is that it should alert other
-    developers when their changes will have an impact on the behavior of your
-    module.  For example, if a developer removes a feature that you depend on,
-    your test should break so they know that the feature is needed.
-    """
-
-        self.delayDisplay("Starting the test")
-        # No tests for now
+        self.delayDisplay("Starting the test:")
+        self.delayDisplay("No tests for now!")
         self.delayDisplay('Test passed!')
