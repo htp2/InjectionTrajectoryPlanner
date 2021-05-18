@@ -23,7 +23,7 @@ class InjectionTrajectoryPlanner(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "Injection Trajectory Planner" 
-        self.parent.categories = []
+        self.parent.categories = ["Planning"]
         self.parent.dependencies = []
         self.parent.contributors = ["Henry Phalen (Johns Hopkins University)"] 
         self.parent.helpText = """
