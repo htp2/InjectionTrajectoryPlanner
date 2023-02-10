@@ -12,12 +12,15 @@ import numpy as np
 from datetime import datetime
 import os
 
-# this is just to prevent pylance from complaining about np.cross not always returning
-# https://github.com/microsoft/pylance-release/issues/3277
-
-
 def np_cross(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    # this is just to prevent pylance from complaining about np.cross not always returning
+    # https://github.com/microsoft/pylance-release/issues/3277
     return np.cross(a, b)
+
+class CMTrajectory:
+    def __init__(self, markup_node_id, straight_idx):
+        self.markup_node_id = markup_node_id
+        self.straight_idx = straight_idx
 
 
 def setSlicePoseFromSliceNormalAndPosition(sliceNode, sliceNormal, slicePosition, defaultViewUpDirection=None,
@@ -97,18 +100,36 @@ class CM_PathWidget(ScriptedLoadableModuleWidget):
 
         # Initialize Useful Parameters
         self.logic = CM_PathLogic()
+        self.current_trajectory = CMTrajectory(None, None)
 
+        ### ACTIONS ###
         # Setup main layout tabs (collapsible buttons)
         actionsCollapsibleButton = ctk.ctkCollapsibleButton()
         actionsCollapsibleButton.text = "Actions"
         self.layout.addWidget(actionsCollapsibleButton)
         actionsFormLayout = qt.QFormLayout(actionsCollapsibleButton)
 
-        vizCollapsibleButton = ctk.ctkCollapsibleButton()
-        vizCollapsibleButton.text = "Visualization"
-        self.layout.addWidget(vizCollapsibleButton)
-        vizFormLayout = qt.QFormLayout(vizCollapsibleButton)
+        self.axial = True
+        # add a checkbox to the actions tab to toggle between axial and cutplane view
+        self.switchButton = qt.QPushButton("Switch Axial/CutPlane View")
+        self.switchButton.toolTip = "Switch between axial and cutplane view."
+        self.switchButton.enabled = True
+        actionsFormLayout.addRow(self.switchButton)
 
+        # add a run button to the actions tab
+        self.runButton = qt.QPushButton("Run")
+        self.runButton.toolTip = "Run the algorithm."
+        self.runButton.enabled = True
+        actionsFormLayout.addRow(self.runButton)
+
+        # add button to toggle live update
+        self.live_update = False
+        self.liveUpdateButton = qt.QPushButton("Toggle Live Update")
+        self.liveUpdateButton.toolTip = "Toggle live update."
+        self.liveUpdateButton.enabled = True
+        actionsFormLayout.addRow(self.liveUpdateButton)
+
+        ### PARAMETERS ###
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
         parametersCollapsibleButton.text = "Parameters"
         self.layout.addWidget(parametersCollapsibleButton)
@@ -126,7 +147,7 @@ class CM_PathWidget(ScriptedLoadableModuleWidget):
         self.planeSelector.showChildNodeTypes = False
         self.planeSelector.setMRMLScene(slicer.mrmlScene)
         self.planeSelector.setToolTip("Pick the plane markup node.")
-        parametersFormLayout.addRow("Plane Markup Node: ", self.planeSelector)
+        parametersFormLayout.addRow("Cut/Bend Plane: ", self.planeSelector)
 
         # node combo box for closed curve markup node
         self.curveSelector = slicer.qMRMLNodeComboBox()
@@ -140,7 +161,7 @@ class CM_PathWidget(ScriptedLoadableModuleWidget):
         self.curveSelector.setMRMLScene(slicer.mrmlScene)
         self.curveSelector.setToolTip("Pick the closed curve markup node.")
         parametersFormLayout.addRow(
-            "Closed Curve Markup Node: ", self.curveSelector)
+            "Removal Boundary: ", self.curveSelector)
 
         # node combo box for fiducial markup node
         self.fiducialSelector = slicer.qMRMLNodeComboBox()
@@ -154,20 +175,7 @@ class CM_PathWidget(ScriptedLoadableModuleWidget):
         self.fiducialSelector.setMRMLScene(slicer.mrmlScene)
         self.fiducialSelector.setToolTip("Pick the fiducial markup node.")
         parametersFormLayout.addRow(
-            "Fiducial Markup Node: ", self.fiducialSelector)
-
-        # node combo box for line markup node
-        self.lineSelector = slicer.qMRMLNodeComboBox()
-        self.lineSelector.nodeTypes = ["vtkMRMLMarkupsLineNode"]
-        self.lineSelector.selectNodeUponCreation = True
-        self.lineSelector.addEnabled = True
-        self.lineSelector.removeEnabled = True
-        self.lineSelector.noneEnabled = True
-        self.lineSelector.showHidden = False
-        self.lineSelector.showChildNodeTypes = False
-        self.lineSelector.setMRMLScene(slicer.mrmlScene)
-        self.lineSelector.setToolTip("Pick the line markup node.")
-        parametersFormLayout.addRow("Line Markup Node: ", self.lineSelector)
+            "Markup For Point Entry Passes Through: ", self.fiducialSelector)
 
         # node combo box for volume node
         self.volumeSelector = slicer.qMRMLNodeComboBox()
@@ -192,10 +200,8 @@ class CM_PathWidget(ScriptedLoadableModuleWidget):
         self.planTrajectorySelector.showHidden = False
         self.planTrajectorySelector.showChildNodeTypes = False
         self.planTrajectorySelector.setMRMLScene(slicer.mrmlScene)
-        self.planTrajectorySelector.setToolTip(
-            "Pick the plan trajectory node.")
-        parametersFormLayout.addRow(
-            "Plan Trajectory: ", self.planTrajectorySelector)
+        self.planTrajectorySelector.setToolTip("Pick the plan trajectory node.")
+        parametersFormLayout.addRow("Plan Output Trajectory: ", self.planTrajectorySelector)
 
         # make an entry for a number which is defaulted to 3.0 called insertion depth per pass
         self.insertionDepthPerPass = qt.QDoubleSpinBox()
@@ -216,39 +222,120 @@ class CM_PathWidget(ScriptedLoadableModuleWidget):
         self.pointsPerPass.maximum = 100
         self.pointsPerPass.setToolTip("Number of points per pass.")
         parametersFormLayout.addRow("Points Per Pass: ", self.pointsPerPass)
+
+        ### OUTPUTS ###
+        outputsCollapsibleButton = ctk.ctkCollapsibleButton()
+        outputsCollapsibleButton.text = "Outputs"
+        self.layout.addWidget(outputsCollapsibleButton)
+        outputsFormLayout = qt.QFormLayout(outputsCollapsibleButton)        
+
+        # add a way to change the output directory on the actions tab, with a button that will open a file dialog
+        self.outputDirectory = qt.QLineEdit()
+        self.outputDirectory.text = os.path.join(
+            slicer.app.temporaryPath, 'CM_Path')
+        self.outputDirectory.setToolTip("Output directory.")
+        outputsFormLayout.addRow("Output Directory: ", self.outputDirectory)
+
+        self.outputDirectoryButton = qt.QPushButton("Browse")
+        self.outputDirectoryButton.toolTip = "Browse for output directory."
+        self.outputDirectoryButton.enabled = True
+        # make open file dialog
+        def openFileDialog():
+            self.outputDirectory.text = qt.QFileDialog.getExistingDirectory(
+                slicer.util.mainWindow(), 'Select a directory')
+        self.outputDirectoryButton.connect('clicked(bool)', openFileDialog)
+        outputsFormLayout.addRow(self.outputDirectoryButton)
+
+        # line edit for output name
+        self.outputName = qt.QLineEdit()
+        self.outputName.text = "trajectory"
+        self.outputName.setToolTip("Output name.")
+        outputsFormLayout.addRow("Output Name: ", self.outputName)
         
-        self.axial = True
-        # add a checkbox to the actions tab to toggle between axial and cutplane view
-        self.switchButton = qt.QPushButton("Switch Axial/CutPlane View")
-        self.switchButton.toolTip = "Switch between axial and cutplane view."
-        self.switchButton.enabled = True
-        actionsFormLayout.addRow(self.switchButton)
 
-        # add a run button to the actions tab
-        self.runButton = qt.QPushButton("Run")
-        self.runButton.toolTip = "Run the algorithm."
-        self.runButton.enabled = True
-        actionsFormLayout.addRow(self.runButton)
+        # checkbox for whether to include a scaled version of each output
+        self.includeScaled = qt.QCheckBox()
+        self.includeScaled.checked = True
+        self.includeScaled.setToolTip("Provide scaled version of each output.")
+        outputsFormLayout.addRow("Provided Scaled Outputs: ", self.includeScaled)
 
-        # add button to toggle live update
-        self.live_update = False
-        self.liveUpdateButton = qt.QPushButton("Toggle Live Update")
-        self.liveUpdateButton.toolTip = "Toggle live update."
-        self.liveUpdateButton.enabled = True
-        actionsFormLayout.addRow(self.liveUpdateButton)
+        # specify scale factor
+        self.scaleFactor = qt.QDoubleSpinBox()
+        self.scaleFactor.value = 1.0
+        self.scaleFactor.singleStep = 0.1
+        self.scaleFactor.minimum = 0.1
+        self.scaleFactor.maximum = 1000.0
+        self.scaleFactor.setToolTip("Scale factor.")
+        outputsFormLayout.addRow("Scale Factor: ", self.scaleFactor)
+        # scale factor greyed out if the user doesn't want to include a scaled version of each output
+        def toggleScaleFactor():
+            if self.includeScaled.checked:
+                self.scaleFactor.enabled = True
+            else:
+                self.scaleFactor.enabled = False
+        self.includeScaled.connect('clicked(bool)', toggleScaleFactor)
+
+        # make checkbox to toggle whether to provide split outputs between straight and curved segments
+        self.splitOutputs = qt.QCheckBox()
+        self.splitOutputs.checked = True
+        self.splitOutputs.setToolTip("Provide split outputs between straight and curved segments.")
+        outputsFormLayout.addRow("Provide Split Outputs: ", self.splitOutputs)
+
+        # if unchecked, set predrill of straight segment to unchecked, grey it out
+        def toggleSplitOutputs():
+            if self.splitOutputs.checked:
+                self.predrillStraight.enabled = True
+            else:
+                self.predrillStraight.enabled = False
+                self.predrillStraight.checked = False
+                togglePredrillDiameter()
+
+        self.splitOutputs.connect('clicked(bool)', toggleSplitOutputs)
+
+        # make checkbox to toggle whether to create predrill for the straight segment
+        self.predrillStraight = qt.QCheckBox()
+        self.predrillStraight.checked = True
+        self.predrillStraight.setToolTip("Create predrill for the straight segment.")
+        outputsFormLayout.addRow("Predrill of Straight Segment: ", self.predrillStraight)
+
+
+        # if the user wants to create predrill for the straight segment, make an entry for a number which is defaulted to 3.0 called predrill diameter
+        self.predrillDiameter = qt.QDoubleSpinBox()
+        self.predrillDiameter.value = 8.0
+        self.predrillDiameter.singleStep = 0.1
+        self.predrillDiameter.minimum = 0.1
+        self.predrillDiameter.maximum = 100.0
+        self.predrillDiameter.setToolTip("Predrill diameter in mm.")
+        outputsFormLayout.addRow("Predrill Diameter: ", self.predrillDiameter)
+
+        # add button to save current output
+        self.saveCurrentOutputButton = qt.QPushButton("Save Current Output")
+        self.saveCurrentOutputButton.toolTip = "Save current output."
+        self.saveCurrentOutputButton.enabled = True
+        outputsFormLayout.addRow(self.saveCurrentOutputButton)
+
+        # make predrill diameter selector greyed out if the user doesn't want to create predrill for the straight segment
+        def togglePredrillDiameter():
+            if self.predrillStraight.checked:
+                self.predrillDiameter.enabled = True
+            else:
+                self.predrillDiameter.enabled = False
+        self.predrillStraight.connect('clicked(bool)', togglePredrillDiameter)
 
         # connections
         self.runButton.connect('clicked(bool)', self.onRun)
         self.switchButton.connect('clicked(bool)', self.onSwitch)
         self.liveUpdateButton.connect('clicked(bool)', self.onLiveUpdate)
+        self.saveCurrentOutputButton.connect('clicked(bool)', self.onSaveCurrentOutput)
 
         # Add vertical spacer
-        self.layout.addStretch(1)       
+        self.layout.addStretch(1)
 
     def onRun(self):
         logic = CM_PathLogic()
-        logic.run(self.planeSelector.currentNode(), self.curveSelector.currentNode(), self.fiducialSelector.currentNode(), 
-            self.lineSelector.currentNode(), self.planTrajectorySelector.currentNode(), self.insertionDepthPerPass.value, self.pointsPerPass.value)
+        self.current_trajectory = logic.run(self.planeSelector.currentNode(), self.curveSelector.currentNode(), self.fiducialSelector.currentNode(),
+                  self.planTrajectorySelector.currentNode(), self.insertionDepthPerPass.value, self.pointsPerPass.value)
+
     def onSwitch(self):
         logic = CM_PathLogic()
         if self.axial:
@@ -258,7 +345,7 @@ class CM_PathWidget(ScriptedLoadableModuleWidget):
         else:
             self.axial = True
             logic.switch_axial()
-    
+
     def onLiveUpdate(self):
         self.live_update = not self.live_update
         print("Live Update: ", self.live_update)
@@ -283,11 +370,19 @@ class CM_PathWidget(ScriptedLoadableModuleWidget):
         print("Curve Modified")
         if self.live_update:
             self.onRun()
-    
+
     def onFiducialModified(self, caller, event):
         print("Fiducial Modified")
         if self.live_update:
             self.onRun()
+
+    def onSaveCurrentOutput(self):
+        print("Save Current Output")
+        logic = CM_PathLogic()
+        #current_trajectory, volume_node, output_dir, output_name, include_scaled, scale, include_predrill, predrill_diameter, do_split
+        logic.save_current_output(self.current_trajectory, self.volumeSelector.currentNode(), self.outputDirectory.text, 
+            self.outputName.text, self.includeScaled.checked, self.scaleFactor.value, self.predrillStraight.checked, self.predrillDiameter.value, self.splitOutputs.checked)
+        
 
     def cleanup(self):
         pass
@@ -308,12 +403,12 @@ class CM_PathLogic(ScriptedLoadableModuleLogic):
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-    def run(self, plane, curve, fiducial, line, planTrajectory, insertion_depth_per_pass, points_per_pass):
+    def run(self, plane, curve, fiducial, planTrajectory, insertion_depth_per_pass, points_per_pass):
         # find closest point on curve to first point in fiducial
         print("start run")
 
         fiducial_point = np.array((0.0, 0.0, 0.0))
-        fiducial.GetNthFiducialPosition(0, fiducial_point)
+        fiducial.GetNthControlPointPosition(0, fiducial_point)
 
         # curve is a vtkMRMLMarkupsClosedCurveNode
 
@@ -348,12 +443,6 @@ class CM_PathLogic(ScriptedLoadableModuleLogic):
         # make closest point a vtkvector3d
         closest_point = vtk.vtkVector3d(
             closest_point[0], closest_point[1], closest_point[2])
-        line.RemoveAllControlPoints()
-
-        line.AddControlPointWorld(fiducial_point)
-        line.AddControlPointWorld(closest_point)
-        print("Closest point is " + str(closest_point) +
-              " at index " + str(closest_point_index))
 
         plane_normal = np.array((0.0, 0.0, 0.0))
         plane.GetNormal(plane_normal)
@@ -364,9 +453,81 @@ class CM_PathLogic(ScriptedLoadableModuleLogic):
             (closest_point[0], closest_point[1], closest_point[2]))
         insertion_normal_np = insertion_position_np - fiducial_point_np
         insertion_normal_np = insertion_normal_np / np.linalg.norm(insertion_normal_np)
-        self.plan_traj(insertion_position_np, insertion_normal_np,
+        full_plan, straight_plan, curved_plan = self.plan_traj(insertion_position_np, insertion_normal_np,
                        plane_normal, spline_points_array, planTrajectory, insertion_depth_per_pass, points_per_pass)
-        print("end run")
+        # set planTrajectory to linear interpolation for visualization
+        planTrajectory.SetCurveType(0)
+        # set these to be locked (so you cannot drag the points)
+        planTrajectory.SetLocked(1)
+        plane.SetLocked(1)
+
+        # get fiducial node id
+        markup_node_id = planTrajectory.GetID()
+        # get indicies of straight plan
+        straight_idx = np.arange(0, straight_plan.shape[0])
+
+        return CMTrajectory(markup_node_id, straight_idx)
+
+    def save_current_output(self, current_trajectory, volume_node, output_dir, output_name, include_scaled, scale, include_predrill, predrill_diameter, do_split):
+        # get the fiducial node
+        fiducial = slicer.mrmlScene.GetNodeByID(current_trajectory.markup_node_id)
+        # get straight indicies
+        straight_idx = current_trajectory.straight_idx
+        curved_idx = np.arange(straight_idx[-1], fiducial.GetNumberOfControlPoints())
+
+        # get all control points as np array
+        control_points = np.zeros((fiducial.GetNumberOfControlPoints(), 3))
+        for i in range(fiducial.GetNumberOfControlPoints()):
+            fiducial.GetNthControlPointPosition(i, control_points[i, :])
+        
+        slicer.modules.AMBF_utilsWidget.logic.exportMarkupToCSV(fiducial, volume_node, output_dir, output_name, 1.0)
+
+        if include_scaled:
+            # save straight plan node to csv
+            slicer.modules.AMBF_utilsWidget.logic.exportMarkupToCSV(fiducial, volume_node, output_dir, output_name + "_scaled", scale)
+
+        if not do_split:
+            return
+
+        # make temporary straight plan node
+        straight_plan_node = slicer.vtkMRMLMarkupsFiducialNode()
+        straight_plan_node.SetName("straight_plan")
+        
+        # add points to straight plan node
+        for i in range(straight_idx.shape[0]):
+            straight_plan_node.AddControlPoint(control_points[straight_idx[i], :])
+        
+        # save straight plan node to csv
+        slicer.modules.AMBF_utilsWidget.logic.exportMarkupToCSV(straight_plan_node, volume_node, output_dir, output_name + "_straight", 1.0)
+        if include_scaled:
+            # save straight plan node to csv
+            slicer.modules.AMBF_utilsWidget.logic.exportMarkupToCSV(straight_plan_node, volume_node, output_dir, output_name + "_straight_scaled", scale)
+        if include_predrill:
+            # putative predrill files
+            straight_traj_files = [os.path.join(output_dir, output_name + "_straight.csv"), os.path.join(output_dir, output_name + "_straight_scaled.csv")]
+            for straight_traj_file in straight_traj_files:
+                if os.path.exists(straight_traj_file):
+                    with open(straight_traj_file, "r") as f:
+                        lines = f.readlines()
+                    with open(straight_traj_file.replace(".csv", "_predrill.csv"), "w") as f:
+                        f.write(str(predrill_diameter))
+                        for line in lines:
+                            f.write(line)
+
+        # now for the curved plan
+        # get the curved plan node
+        curved_plan_node = slicer.vtkMRMLMarkupsFiducialNode()
+        curved_plan_node.SetName("curved_plan")
+        # add points to curved plan node
+        for i in range(curved_idx.shape[0]):
+            curved_plan_node.AddControlPoint(control_points[curved_idx[i], :])
+
+        # save curved plan node to csv
+        slicer.modules.AMBF_utilsWidget.logic.exportMarkupToCSV(curved_plan_node, volume_node, output_dir, output_name + "_curved", 1.0)
+        if include_scaled:
+            # save curved plan node to csv
+            slicer.modules.AMBF_utilsWidget.logic.exportMarkupToCSV(curved_plan_node, volume_node, output_dir, output_name + "_curved_scaled", scale)
+
 
     def find_points_on_arc(self, insertion_length, insertion_position, th_min, th_max, R, num_points=10):
         # make arc with center at insertion_position and radius insertion_length and start point at pos_after_insertion with angle of max_rot_angle_at_insertion
@@ -451,7 +612,7 @@ class CM_PathLogic(ScriptedLoadableModuleLogic):
         disc = []
         for i in range(len(curve_central_fine_2d)):
             disc.append((curve_central_fine_2d[i, 0], curve_central_fine_2d[i, 1]))
-        
+
         # make vtk polygon from curve_central_fine_2d
         # disc = vtk.vtkPolygon()
         # disc.GetPoints().SetNumberOfPoints(len(curve_central_fine_2d))
@@ -540,8 +701,12 @@ class CM_PathLogic(ScriptedLoadableModuleLogic):
             # change to vtkvector3d
             pos.Set(plan[i, 0], plan[i, 1], plan[i, 2])
             planTrajectory.AddControlPointWorld(pos)
-        # set planTrajectory to linear
-        # planTrajectory.SetInterpolationTypeToLinear()
+
+        full_plan = plan
+        straight_plan = np.vstack(entry_points)
+        # curved plan is the plan minus the straight plan
+        curved_plan = np.vstack(plan[len(entry_points)::])
+        return full_plan, straight_plan, curved_plan
 
     def switch_cutplane(self, plane, curve):
         # make the axial view perpendicular to the plane
@@ -632,7 +797,7 @@ class CM_PathLogic(ScriptedLoadableModuleLogic):
 
     def jumpToMarkup(self, MarkupNode):
         pos = [0.0, 0.0, 0.0]
-        MarkupNode.GetNthFiducialPosition(0, pos)
+        MarkupNode.GetNthControlPointPosition(0, pos)
 
         for name in ['Red', 'Yellow', 'Green']:
             sliceNode = slicer.app.layoutManager().sliceWidget(name).mrmlSliceNode()
@@ -651,8 +816,8 @@ class CM_PathLogic(ScriptedLoadableModuleLogic):
         p_target = np.array([0.0, 0.0, 0.0])
         p_Entry = np.array([0.0, 0.0, 0.0])
 
-        targetMarkupNode.GetNthFiducialPosition(0, p_target)
-        EntryMarkupNode.GetNthFiducialPosition(0, p_Entry)
+        targetMarkupNode.GetNthControlPointPosition(0, p_target)
+        EntryMarkupNode.GetNthControlPointPosition(0, p_Entry)
         sliceNormal = p_target - p_Entry
         slicePosition = p_target
         setSlicePoseFromSliceNormalAndPosition(
@@ -684,7 +849,7 @@ class CM_PathLogic(ScriptedLoadableModuleLogic):
         yellowSliceNode.SetOrientationToSagittal()
         greenSliceNode.SetOrientationToCoronal()
         p_target = np.array([0.0, 0.0, 0.0])
-        targetMarkupNode.GetNthFiducialPosition(0, p_target)
+        targetMarkupNode.GetNthControlPointPosition(0, p_target)
 
 
 # noinspection PyMethodMayBeStatic
