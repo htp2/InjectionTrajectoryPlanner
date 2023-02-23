@@ -223,6 +223,19 @@ class CM_PathWidget(ScriptedLoadableModuleWidget):
         self.pointsPerPass.setToolTip("Number of points per pass.")
         parametersFormLayout.addRow("Points Per Pass: ", self.pointsPerPass)
 
+        # make an entry for "Entry Orientation Transform" which is a transform node
+        self.entryTrajectoryTransformSelector = slicer.qMRMLNodeComboBox()
+        self.entryTrajectoryTransformSelector.nodeTypes = ["vtkMRMLTransformNode"]
+        self.entryTrajectoryTransformSelector.selectNodeUponCreation = True
+        self.entryTrajectoryTransformSelector.addEnabled = True
+        self.entryTrajectoryTransformSelector.removeEnabled = True
+        self.entryTrajectoryTransformSelector.noneEnabled = True
+        self.entryTrajectoryTransformSelector.showHidden = False
+        self.entryTrajectoryTransformSelector.showChildNodeTypes = False
+        self.entryTrajectoryTransformSelector.setMRMLScene(slicer.mrmlScene)
+        self.entryTrajectoryTransformSelector.setToolTip("Pick the entry trajectory transform node, this will encode the orientation of the entry trajectory.")
+        parametersFormLayout.addRow("Entry Orientation Transform: ", self.entryTrajectoryTransformSelector)
+
         ### OUTPUTS ###
         outputsCollapsibleButton = ctk.ctkCollapsibleButton()
         outputsCollapsibleButton.text = "Outputs"
@@ -334,7 +347,7 @@ class CM_PathWidget(ScriptedLoadableModuleWidget):
     def onRun(self):
         logic = CM_PathLogic()
         self.current_trajectory = logic.run(self.planeSelector.currentNode(), self.curveSelector.currentNode(), self.fiducialSelector.currentNode(),
-                  self.planTrajectorySelector.currentNode(), self.insertionDepthPerPass.value, self.pointsPerPass.value)
+                  self.planTrajectorySelector.currentNode(), self.insertionDepthPerPass.value, self.pointsPerPass.value, self.entryTrajectoryTransformSelector.currentNode())
 
     def onSwitch(self):
         logic = CM_PathLogic()
@@ -381,7 +394,8 @@ class CM_PathWidget(ScriptedLoadableModuleWidget):
         logic = CM_PathLogic()
         #current_trajectory, volume_node, output_dir, output_name, include_scaled, scale, include_predrill, predrill_diameter, do_split
         logic.save_current_output(self.current_trajectory, self.volumeSelector.currentNode(), self.outputDirectory.text, 
-            self.outputName.text, self.includeScaled.checked, self.scaleFactor.value, self.predrillStraight.checked, self.predrillDiameter.value, self.splitOutputs.checked)
+            self.outputName.text, self.includeScaled.checked, self.scaleFactor.value, self.predrillStraight.checked, self.predrillDiameter.value, self.splitOutputs.checked,
+            self.entryTrajectoryTransformSelector.currentNode())
         
 
     def cleanup(self):
@@ -403,7 +417,7 @@ class CM_PathLogic(ScriptedLoadableModuleLogic):
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-    def run(self, plane, curve, fiducial, planTrajectory, insertion_depth_per_pass, points_per_pass):
+    def run(self, plane, curve, fiducial, planTrajectory, insertion_depth_per_pass, points_per_pass, entry_orientation_transform):
         # find closest point on curve to first point in fiducial
         print("start run")
 
@@ -466,9 +480,37 @@ class CM_PathLogic(ScriptedLoadableModuleLogic):
         # get indicies of straight plan
         straight_idx = np.arange(0, straight_plan.shape[0])
 
+        # transform is rotation matrix that takes z axis to the insertion normal
+        # and x axis to the plane normal
+        # z axis is insertion normal
+        # x axis is plane normal
+        # y axis is cross product of z and x
+        z = insertion_normal_np
+        x = plane_normal
+        y = np.cross(z, x)
+        # ensure x,y,z are unit vectors
+        x = x / np.linalg.norm(x)
+        y = y / np.linalg.norm(y)
+        z = z / np.linalg.norm(z)
+        # make rotation matrix
+        R = np.array((x, y, z))
+        T = vtk.vtkMatrix4x4()
+        # set entry_orientation_transform to have R as rotation matrix
+        entry_orientation_transform.GetMatrixTransformFromParent(T)
+        T.SetElement(0, 0, R[0, 0])
+        T.SetElement(0, 1, R[0, 1])
+        T.SetElement(0, 2, R[0, 2])
+        T.SetElement(1, 0, R[1, 0])
+        T.SetElement(1, 1, R[1, 1])
+        T.SetElement(1, 2, R[1, 2])
+        T.SetElement(2, 0, R[2, 0])
+        T.SetElement(2, 1, R[2, 1])
+        T.SetElement(2, 2, R[2, 2])
+        entry_orientation_transform.SetMatrixTransformFromParent(T)
+
         return CMTrajectory(markup_node_id, straight_idx)
 
-    def save_current_output(self, current_trajectory, volume_node, output_dir, output_name, include_scaled, scale, include_predrill, predrill_diameter, do_split):
+    def save_current_output(self, current_trajectory, volume_node, output_dir, output_name, include_scaled, scale, include_predrill, predrill_diameter, do_split, entry_orientation_transform):
         # get the fiducial node
         fiducial = slicer.mrmlScene.GetNodeByID(current_trajectory.markup_node_id)
         # get straight indicies
@@ -510,7 +552,7 @@ class CM_PathLogic(ScriptedLoadableModuleLogic):
                     with open(straight_traj_file, "r") as f:
                         lines = f.readlines()
                     with open(straight_traj_file.replace(".csv", "_predrill.csv"), "w") as f:
-                        f.write(str(predrill_diameter))
+                        f.write(str(predrill_diameter)+"\n")
                         for line in lines:
                             f.write(line)
 
@@ -527,6 +569,30 @@ class CM_PathLogic(ScriptedLoadableModuleLogic):
         if include_scaled:
             # save curved plan node to csv
             slicer.modules.AMBF_utilsWidget.logic.exportMarkupToCSV(curved_plan_node, volume_node, output_dir, output_name + "_curved_scaled", scale)
+
+        T = vtk.vtkMatrix4x4()
+        entry_orientation_transform.GetMatrixTransformFromParent(T)
+        # convert to numpy array 4x4 homogeneous matrix
+        T_np = np.zeros((4, 4))
+        for i in range(4):
+            for j in range(4):
+                T_np[i, j] = T.GetElement(i, j)
+        # convert RAS to LPS
+        ras2lps = np.diag([-1, -1, 1, 1])
+        T_np = ras2lps @ T_np @ ras2lps
+        # rotate pi/2 about z axis to account for ambf offset
+        R = np.array([[0, 1, 0], [-1, 0, 0], [0, 0, 1]])
+        T_np[:3, :3] = R @ T_np[:3, :3]
+        # save to file
+        np.savetxt(os.path.join(output_dir, output_name + "_entry_orientation_transform.txt"), T_np, fmt="%f")
+        # convert to euler angles XYZ
+        from scipy.spatial.transform import Rotation
+        euler_angles = Rotation.from_matrix(T_np[:3, :3]).as_euler('xyz')
+        # append to file
+        with open(os.path.join(output_dir, output_name + "_entry_orientation_transform.txt"), "a") as f:
+            f.write("Euler angles XYZ: " + str(euler_angles) + "\n")
+            # write that AMBF r, p, y will be euler_angles[2], euler_angles[1], euler_angles[0]
+            f.write("AMBF r, p, y: " + str(euler_angles[2]) + ", " + str(euler_angles[1]) + ", " + str(euler_angles[0]) + "\n")
 
 
     def find_points_on_arc(self, insertion_length, insertion_position, th_min, th_max, R, num_points=10):
